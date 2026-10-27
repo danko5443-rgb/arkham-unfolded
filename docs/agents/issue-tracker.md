@@ -7,8 +7,8 @@ Use the `gh` CLI from this clone. Before the first write, verify the target with
 ## Conventions
 
 - **Create:** `gh issue create --title "..." --body-file /tmp/issue.md`.
-- **Read:** `gh issue view <number> --json number,title,body,labels,comments`.
-- **List:** `gh issue list --state open --limit 100 --json number,title,body,labels,comments`, with appropriate label and state filters. Paginate when the task requires every matching issue.
+- **Read:** `gh issue view <number> --json number,title,state,body,labels`. Read relevant comments separately as below.
+- **List:** `gh issue list --state open --limit 100 --json number,title,state,labels`, with appropriate label and state filters. Inspect selected issue bodies separately; paginate when the task requires every matching issue.
 - **Comment:** `gh issue comment <number> --body-file /tmp/comment.md`.
 - **Labels:** `gh issue edit <number> --add-label "..." --remove-label "..."`, using the mapping in `triage-labels.md`.
 - **Close:** post the explanation with `gh issue comment`, then use `gh issue close <number>`. Comment separately even when the issue is already closed.
@@ -16,6 +16,20 @@ Use the `gh` CLI from this clone. Before the first write, verify the target with
 Write multiline bodies to a temporary file and pass `--body-file`. Read back the affected issue, comment, or label after every write. If a write times out or its result is unclear, inspect remote state before retrying.
 
 Publishing an issue or applying a readiness label follows the authority and feasibility rules in `CLAUDE.md` and the constitution. A draft spec or a closed dependency alone does not activate work.
+
+## Bounded context reads
+
+Start with issue metadata and the current body. Discover comments in small pages, then fetch the bodies needed to understand the decisions and current authority:
+
+```sh
+gh api --method GET repos/joeloverbeck/arkham-unfolded/issues/<number>/comments \
+  -f per_page=20 -f page=1 --jq '.[] | {id,updated_at,html_url}'
+gh api repos/joeloverbeck/arkham-unfolded/issues/comments/<comment-id> --jq .body
+```
+
+Follow linked decisions and continue pages as needed for the requested coverage. An index locates evidence; it does not replace reading relevant comment bodies. Read back each write using its returned issue or comment identity.
+
+For long repository documents, locate headings or rule identifiers with `rg -n`, then read complete required sections in manageable ranges. Preserve mandatory reading and relevant surrounding context. Budget a batched tool call for the combined output of its commands, including the outer tool's output limit. If output truncates, narrow the next read to the missing material; treat that material as unread until retrieved completely.
 
 ## Sub-issues and dependencies
 
