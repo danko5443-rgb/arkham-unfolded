@@ -179,6 +179,24 @@ pub fn save_session(path: impl AsRef<Path>, session: &Session) -> Result<(), Con
     write_session(path.as_ref(), session, false)
 }
 
+/// Apply and save a choice before installing it as the live session.
+/// Refused choices never attempt persistence; any error leaves the entire live
+/// session unchanged. Filesystem side effects follow `save_session` semantics.
+pub fn commit_choice(
+    path: impl AsRef<Path>,
+    session: &mut Session,
+    revision: u64,
+    id: &str,
+) -> Result<(), ContinuityError> {
+    let mut candidate = session.clone();
+    candidate
+        .choose(revision, id)
+        .map_err(|error| ContinuityError(error.to_string()))?;
+    save_session(path, &candidate)?;
+    *session = candidate;
+    Ok(())
+}
+
 /// Explicitly starts a fresh example at the active path, retaining the old run
 /// in a unique sibling file in addition to the rotating `.previous` recovery.
 pub fn restart_session(path: impl AsRef<Path>, session: &Session) -> Result<(), ContinuityError> {
