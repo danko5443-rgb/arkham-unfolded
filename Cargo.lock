@@ -214,10 +214,12 @@ version = "0.1.0"
 dependencies = [
  "bevy",
  "lzma-rs",
+ "rustix 1.1.6",
  "serde",
  "serde_json",
  "sha2",
  "tempfile",
+ "toml",
 ]
 
 [[package]]

@@ -1,5 +1,7 @@
 //! A local experiment for GitHub #2, not a campaign engine.
 
+pub mod asset_config;
+pub mod assets;
 pub mod continuity;
 
 #[cfg(feature = "tabletop")]

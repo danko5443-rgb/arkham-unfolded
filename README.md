@@ -25,7 +25,30 @@ Click any card to open its enlarged artwork and readable rules. Use **Close card
 
 **Close and resume:** decisions autosave to `local/experiment/curse.session.json`. Close the window and run the same command to resume. Before any decision, use **Save live session** if you want to retain that initial state. If a completed result opens on launch, click **Return to table**, then **Start another example** for a fresh run; the previous run is archived. From an unfinished case, **End this experiment** makes that restart control available.
 
-The supplied card and token artwork loads from the external archive when available. Missing artwork uses readable substitutes. See the [experiment guide](docs/experiments/jacqueline-curse.md) for the alternate case, selecting a different save or artwork folder, and recovery instructions.
+Card, token and standee images and the symbol font load from a small prepared asset collection. Missing artwork uses readable substitutes. Use **Choose asset folder** in the side panel to select a prepared folder, check its completeness and save its location for the next launch. Scroll the panel if needed. The native folder dialog uses Ubuntu's `zenity` package. See the [experiment guide](docs/experiments/jacqueline-curse.md) for preparation, alternate cases, save selection and recovery.
+
+## Prepare the external assets
+
+The developer/agent prepares the selected files once; ordinary play needs only the resulting folder. From this checkout, with the original archive available:
+
+```sh
+cargo run --locked --bin arkham-assets -- prepare \
+  --source "/home/joeloverbeck/Pictures/Arkham Horror LCG Resources" \
+  --output "${XDG_DATA_HOME:-$HOME/.local/share}/arkham-unfolded/assets"
+```
+
+This copies the 12 selected PNGs and extracts the verified font into ordinary files (about 11.57 MiB plus a small manifest). The source archive stays unchanged. Preparation requires a fresh destination; repeating it with an identical complete collection is a no-op. Conflicting, incomplete or unknown destination contents are preserved and reported. To prepare an updated selection, choose a new output folder and select it in the app after verification.
+
+The default runtime folder is `$XDG_DATA_HOME/arkham-unfolded/assets`, normally `~/.local/share/arkham-unfolded/assets`. A saved choice lives in `$XDG_CONFIG_HOME/arkham-unfolded/config.toml`, normally `~/.config/arkham-unfolded/config.toml`, as `asset_root = "/absolute/path/to/assets"`. Relative XDG overrides are ignored. Folder selection takes effect after restarting the app. A temporary `--art-root PATH` overrides the saved setting for that launch; `--no-art` deliberately uses substitutes.
+
+Copy the whole prepared folder, including `manifest.json`, to relocate it. The same compatible app build can check and use that copy without the original archive:
+
+```sh
+cargo run --locked --bin arkham-assets -- check /absolute/path/to/copied-assets
+cargo run --locked --features tabletop --bin arkham-tabletop -- --art-root /absolute/path/to/copied-assets
+```
+
+The check reports missing or changed files and exits unsuccessfully for an incomplete collection. The app remains playable with readable substitutes. Personal saves, recordings, research documents and configuration are separate from this folder. Asset portability does not expand the supported game content or authorize redistribution of third-party material.
 
 ## Project aim
 
@@ -50,6 +73,7 @@ Content support follows the owner's actual use. Starting decks, campaign content
 - [Mission and scope](docs/foundation/mission.md)
 - [Play contract](docs/foundation/play-contract.md)
 - [Sources and verification](docs/foundation/sources-and-verification.md)
+- [Prepared asset collection decision](docs/adr/0001-prepared-runtime-assets.md)
 - [Issue #1 feasibility assessment](docs/research/issue-1-assessment.md) — accepted source baseline and evidence for the selected bounded experiment
 - [Run the selected skill-test experiment](docs/experiments/jacqueline-curse.md) — native tabletop, player-equivalent driver, save/reopen and recorded replay under [issue #2](https://github.com/joeloverbeck/arkham-unfolded/issues/2)
 - [Repository principles](docs/principles/principles-for-repos.md)
@@ -60,7 +84,7 @@ Content support follows the owner's actual use. Starting decks, campaign content
 
 The built experiment runs offline. A clean clone needs no artwork or credentials for the checks or readable tabletop substitutes. Run the rules and continuity checks with `cargo test --locked`, or include the tabletop checks with `cargo test --locked --features tabletop`. See the experiment guide for external inputs, records and evidence limits.
 
-The future application will read a separately configured resource archive. Card images and token textures are not included in Git. Gameplay must remain usable with readable English substitutes when artwork is absent; absent or unsupported rules behavior must be identified before play. See the source contract for the archive layout and source identities.
+The application reads a separately configured prepared asset collection. Image and font bytes are not included in Git. Gameplay remains usable with readable English substitutes when artwork is absent; absent or unsupported rules behavior must be identified before play. The [source contract](docs/foundation/sources-and-verification.md#presentation-asset-preparation) requires deliberate selection, copying/conversion and verification whenever development introduces a new asset dependency. The original archive's layout and source identities belong to that preparation step.
 
 Once required game data is imported, gameplay, saves, and replays will work offline. ArkhamDB remains the deck editor; imports and update checks require network access. Personal saves, replays, captures, and credentials remain local and outside Git.
 

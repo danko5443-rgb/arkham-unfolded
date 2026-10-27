@@ -14,6 +14,16 @@ The external archive contains `sources/reference-manifest.json`, identifying an 
 
 The three starting ArkhamDB deck identities are recorded in [the play contract](play-contract.md). Imported deck contents and successors need stable snapshots for preparation, save/load and replay. Required source evidence must remain retrievable for the reproducibility and fidelity claims made; a moving website or a temporary research file alone is insufficient durable custody.
 
+## Presentation asset preparation
+
+The source archive, currently `/home/joeloverbeck/Pictures/Arkham Horror LCG Resources`, remains externally owned and unchanged. When accepted development first requires a presentation asset, the developer or agent selects its exact source identity and variant, assigns an application-relative destination, copies or performs the necessary bounded conversion, and verifies the prepared result before introducing the runtime dependency. Selection distinguishes edition, language, face and artwork variant where relevant. Source directories describe provenance; they do not dictate the application's layout.
+
+Keep the selected input/output identities, hashes and any transformation evidence in the repository's preparation recipe and supporting evidence. Preserve original source bytes and historical observations. Image and font payloads live in the external prepared collection; its manifest identifies the selected contents without requiring the source archive. A converted file needed for offline play, such as an extracted font, belongs in that collection. Links back to the source archive do not make a self-contained collection.
+
+Prepare a fresh complete collection for the declared supported use, and verify it against the application's selected requirements before declaring success. An identical completed result may be reused; changed, partial or unknown destination contents must not be silently overwritten. Failure leaves the active collection intact, and selecting a replacement does not automatically delete earlier collections. Missing-art substitutes preserve playability, but they cannot stand in for successful preparation or complete supplied assets.
+
+The actual application must consume the prepared files after relocation with source-archive access unavailable, retaining the established visual meaning, missing-art behavior and save/replay continuity. Mechanical identity checks and native presentation evidence support their respective claims. The [architectural decision](../adr/0001-prepared-runtime-assets.md) records the reason for this boundary. Preparing assets for another Ubuntu user to try the same supported content does not expand implemented game behavior, the personal-use product scope or third-party publication rights.
+
 ## Existing implementation as a secondary reference
 
 Joel wants to inspect and learn from `halogenandtoast/ArkhamHorror`, using valid behavior where useful rather than trusting the application wholesale. The inspected reference commit is [`a6f3b870372ce239bfec3c1153b7ccbebde49d63`](https://github.com/halogenandtoast/ArkhamHorror/tree/a6f3b870372ce239bfec3c1153b7ccbebde49d63).

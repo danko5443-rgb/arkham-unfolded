@@ -1,35 +1,8 @@
 //! The three inspected miniature-card portraits used by this experiment.
 
-use super::{GOLD, TransientScene, verified_image};
+use super::{GOLD, TransientScene};
 use bevy::prelude::*;
-use std::{f32::consts::PI, path::Path};
-
-#[derive(serde::Deserialize)]
-struct Manifest {
-    investigators: Vec<Portrait>,
-}
-
-#[derive(serde::Deserialize)]
-struct Portrait {
-    name: String,
-    path: String,
-    sha256: String,
-}
-
-pub(super) fn load(server: &AssetServer, root: Option<&Path>) -> Vec<(String, Handle<Image>)> {
-    let Some(root) = root else { return Vec::new() };
-    let manifest: Manifest =
-        serde_json::from_str(include_str!("../../docs/experiments/investigator-art.json"))
-            .expect("the committed investigator art manifest is valid JSON");
-    manifest
-        .investigators
-        .into_iter()
-        .filter_map(|portrait| {
-            verified_image(server, root, &portrait.path, &portrait.sha256)
-                .map(|image| (portrait.name, image))
-        })
-        .collect()
-}
+use std::f32::consts::PI;
 
 pub(super) fn spawn(
     commands: &mut Commands,
