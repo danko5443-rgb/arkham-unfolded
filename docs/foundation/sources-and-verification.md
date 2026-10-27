@@ -1,0 +1,45 @@
+# Sources, fidelity and verification
+
+Reference identities below identify inspected material. They do not establish an accepted complete rules baseline, implementation readiness or gameplay correctness.
+
+## Source authority and current evidence
+
+Official game sources govern game behavior. The exact rules reference, campaign material, card text, errata, FAQ and any relevant Grimoire rulings must be reconciled into an identifiable source set with precedence and an ambiguity policy before rules-engine implementation is activated. The latest taboo selection for new campaigns is established intent; its exact revision and effect are part of that preparation contract.
+
+Source reconnaissance on 2026-10-27 identified the [official game resources](https://www.fantasyflightgames.com/en/products/arkham-horror-the-card-game/), [Legacy FAQ 2.5](https://images-cdn.fantasyflightgames.com/filer_public/c1/d0/c1d0fab6-7fa6-4ce2-af6a-16416381a19b/ahc_faq_v25_february_2026-web.pdf), and [Grimoire 1.1 announcement](https://www.fantasyflightgames.com/arkham-grimoire-v1-1/). Their applicability and precedence for this original campaign need reconciliation; a newer document does not by itself settle every legacy-card interpretation. [ArkhamDB's API](https://arkhamdb.com/api/) supplies card/deck metadata and [taboo records](https://arkhamdb.com/api/public/taboos/). At reconnaissance, the newest returned taboo was ID 10, effective 2026-02-19; the supplied decks selected ID 9. These are observed reference facts, not a permanent latest-version declaration.
+
+The external archive contains `sources/reference-manifest.json`, identifying an ArkhamDB metadata snapshot from `Kamalisk/arkhamdb-json-data`, revision `d8cc0e7e9081c0171298f8b1c07c90ddc2b08662`, dated `2026-10-22T16:53:16Z`. The manifest describes a pinned third-party catalog, not publisher completeness or artwork certification. English reference records are under `sources/reference/arkhamdb/pack/`; encounter names and symbol associations are in `sources/reference/arkhamdb/encounters.json`.
+
+`catalog/cards.jsonl` provides card codes, language/category, pack, variant identity, face/back paths and provenance information. `sources/source-manifest.json` records archive release `v1.22.11` and hashed source saves. These are useful identity and asset-mapping evidence, not an executable rules specification. Archive completeness, English metadata coverage, actual image availability and implemented rules coverage remain distinct claims.
+
+The three starting ArkhamDB deck identities are recorded in [the play contract](play-contract.md). Imported deck contents and successors need stable snapshots for preparation, save/load and replay. Required source evidence must remain retrievable for the reproducibility and fidelity claims made; a moving website or a temporary research file alone is insufficient durable custody.
+
+## Existing implementation as a secondary reference
+
+Joel wants to inspect and learn from `halogenandtoast/ArkhamHorror`, using valid behavior where useful rather than trusting the application wholesale. The inspected reference commit is [`a6f3b870372ce239bfec3c1153b7ccbebde49d63`](https://github.com/halogenandtoast/ArkhamHorror/tree/a6f3b870372ce239bfec3c1153b7ccbebde49d63).
+
+It provides concrete investigator modules, tests and bug explanations. Its code and expected test outputs are secondary evidence, not governing game rules or independent proof of a Rust translation. The inspected Night of the Zealot scenario test checks encounter-deck counts; that is not evidence of full campaign completion. Investigator modules depend on shared action accounting, timing, choice and token machinery, so copying a module's apparent behavior cannot establish correctness in another engine.
+
+The reference workflow includes reading its algorithms, tests and bug analyses, checking candidate behavior against official sources, and implementing the verified rules in Rust. No upstream permission outreach is part of this workflow. Referenced revisions and any material code provenance remain explicit. Its architecture and interpretations are not adopted merely by inspection, and ordinary operation does not depend on its runtime. This project's MIT license applies to its original code, not the reference project's material.
+
+## Feasibility before implementation readiness
+
+The next assessment must derive a coarse behavioral-obligation map from the accepted campaign, decks and sources, independently of any proposed Rust representation. It includes base rules, exceptions, source precedence, timing and lifecycle boundaries, persistent modifiers, replacement effects, optional/compound continuations, interactions among the three controlled investigators and campaign consequences. Unresolved interpretations and missing independent expectations remain visible deficits.
+
+This map estimates authoring, implementation, adjudication, testing, review and maintenance burden. Counting cards or writing one test per card cannot account for material interactions. An exhaustive pairwise matrix or state-space enumeration is not automatically required.
+
+A candidate difficult case is Jacqueline's nested chaos-token replacement interacting with Patrice's curse-related cards; the exact real-card interaction and independent expected result still require source investigation. This is a candidate, not an accepted first probe. Select the first hostile execution case only after the source-derived obligation map makes its relevance clear.
+
+Until that source set, obligation map and first case are accepted, bounded reconnaissance may inform the decision, but does not authorize a generalized engine, DSL, prose interpreter, runtime LLM adjudicator or inventory-scale implementation. Rust-specific internal choices remain delegated engineering judgment once the corresponding bounded work is accepted.
+
+## Evidence required for the claims
+
+Rules correctness needs expectations independently derived from governing sources, including legal alternatives, refused illegal actions and difficult cross-card/timing cases. Tests should check consequences and available decisions, not merely repeat internal structures. Comparing implementations can expose disagreements; agreement alone does not prove either is correct.
+
+Agent playtesting must use the production rules and the observations and choices available to a player. Privileged state construction, deterministic randomness and inspection may support separate test fixtures without becoming player abilities. Exercise complete legal campaign progression and failures as well as favorable runs. Automated runs demonstrate the cases and invariants they actually check; an agent failing to find a defect is not proof of absence.
+
+Human inspection must exercise the actual tabletop path, including real decisions, understandable rule explanations, readability, camera control and animation pacing. Save/load must preserve a meaningful interrupted game state, and replay must reproduce recorded events through its intended presentation controls. Reproducibility, rules fidelity and enjoyable use require their own evidence; none substitutes for the others.
+
+The full delivery claim remains the complete first slice in [the mission](mission.md), with all accepted content and interactions supported. Known implementation deficits cannot be renamed exclusions while claiming that slice is delivered. Further development beyond the proposed assessment needs a bounded work item and evidence appropriate to its claim; the total completion effort remains unknown.
+
+This document applies `PURP-4`–`PURP-5`, `EVID-2`–`EVID-6`, `SEM-1`–`SEM-2`, `REP-1`–`REP-2`, `INT-1`–`INT-4` and `OPS-1` from [the repository constitution](../principles/principles-for-repos.md), without replacing their canonical requirements.
