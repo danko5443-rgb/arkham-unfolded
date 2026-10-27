@@ -34,10 +34,10 @@ The developer/agent prepares the selected files once; ordinary play needs only t
 ```sh
 cargo run --locked --bin arkham-assets -- prepare \
   --source "/home/joeloverbeck/Pictures/Arkham Horror LCG Resources" \
-  --output "${XDG_DATA_HOME:-$HOME/.local/share}/arkham-unfolded/assets"
+  --output "$HOME/.local/share/arkham-unfolded/assets"
 ```
 
-This copies the 12 selected PNGs and extracts the verified font into ordinary files (about 11.57 MiB plus a small manifest). The source archive stays unchanged. Preparation requires a fresh destination; repeating it with an identical complete collection is a no-op. Conflicting, incomplete or unknown destination contents are preserved and reported. To prepare an updated selection, choose a new output folder and select it in the app after verification.
+This example uses the default location. If you set an absolute `XDG_DATA_HOME`, use that directory followed by `/arkham-unfolded/assets` as the output instead. This copies the 12 selected PNGs and extracts the verified font into ordinary files (about 11.57 MiB plus a small manifest). The source archive stays unchanged. Preparation requires a fresh destination; repeating it with an identical complete collection is a no-op. Conflicting, incomplete or unknown destination contents are preserved and reported. To prepare an updated selection, choose a new output folder and select it in the app after verification.
 
 The default runtime folder is `$XDG_DATA_HOME/arkham-unfolded/assets`, normally `~/.local/share/arkham-unfolded/assets`. A saved choice lives in `$XDG_CONFIG_HOME/arkham-unfolded/config.toml`, normally `~/.config/arkham-unfolded/config.toml`, as `asset_root = "/absolute/path/to/assets"`. Relative XDG overrides are ignored. Folder selection takes effect after restarting the app. A temporary `--art-root PATH` overrides the saved setting for that launch; `--no-art` deliberately uses substitutes.
 
