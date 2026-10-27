@@ -1,0 +1,124 @@
+//! The three inspected miniature-card portraits used by this experiment.
+
+use super::{GOLD, TransientScene, verified_image};
+use bevy::prelude::*;
+use std::{f32::consts::PI, path::Path};
+
+#[derive(serde::Deserialize)]
+struct Manifest {
+    investigators: Vec<Portrait>,
+}
+
+#[derive(serde::Deserialize)]
+struct Portrait {
+    name: String,
+    path: String,
+    sha256: String,
+}
+
+pub(super) fn load(server: &AssetServer, root: Option<&Path>) -> Vec<(String, Handle<Image>)> {
+    let Some(root) = root else { return Vec::new() };
+    let manifest: Manifest =
+        serde_json::from_str(include_str!("../../docs/experiments/investigator-art.json"))
+            .expect("the committed investigator art manifest is valid JSON");
+    manifest
+        .investigators
+        .into_iter()
+        .filter_map(|portrait| {
+            verified_image(server, root, &portrait.path, &portrait.sha256)
+                .map(|image| (portrait.name, image))
+        })
+        .collect()
+}
+
+pub(super) fn spawn(
+    commands: &mut Commands,
+    meshes: &mut Assets<Mesh>,
+    materials: &mut Assets<StandardMaterial>,
+    image: Option<&Handle<Image>>,
+    position: Vec3,
+    color: Color,
+) {
+    let base = materials.add(StandardMaterial {
+        base_color: color,
+        perceptual_roughness: 0.75,
+        ..default()
+    });
+    let trim = materials.add(StandardMaterial {
+        base_color: GOLD,
+        metallic: 0.4,
+        perceptual_roughness: 0.45,
+        ..default()
+    });
+    commands
+        .spawn((
+            Name::new("Investigator standee"),
+            Transform::from_translation(position),
+            Visibility::default(),
+            Pickable::IGNORE,
+            TransientScene,
+        ))
+        .with_children(|standee| {
+            standee.spawn((
+                Mesh3d(meshes.add(Cylinder::new(0.52, 0.08))),
+                MeshMaterial3d(trim),
+                Transform::from_xyz(0.0, 0.04, 0.0),
+                Pickable::IGNORE,
+            ));
+            standee.spawn((
+                Mesh3d(meshes.add(Cylinder::new(0.49, 0.045))),
+                MeshMaterial3d(base.clone()),
+                Transform::from_xyz(0.0, 0.09, 0.0),
+                Pickable::IGNORE,
+            ));
+            let Some(image) = image else {
+                // The caller retains the investigator's name and state label.
+                standee.spawn((
+                    Name::new("Investigator substitute; portrait unavailable"),
+                    Mesh3d(meshes.add(Capsule3d::new(0.25, 0.72))),
+                    MeshMaterial3d(base),
+                    Transform::from_xyz(0.0, 0.75, 0.0),
+                    Pickable::IGNORE,
+                ));
+                return;
+            };
+
+            const WIDTH: f32 = 1.0;
+            const HEIGHT: f32 = WIDTH * 744.0 / 484.0;
+            const BOTTOM: f32 = 0.20;
+            let center = BOTTOM + HEIGHT / 2.0;
+            let edge = materials.add(Color::srgb(0.11, 0.12, 0.12));
+            standee.spawn((
+                Mesh3d(meshes.add(Cuboid::new(WIDTH + 0.025, HEIGHT + 0.025, 0.03))),
+                MeshMaterial3d(edge),
+                Transform::from_xyz(0.0, center, 0.0),
+                Pickable::IGNORE,
+            ));
+            standee.spawn((
+                Mesh3d(meshes.add(Cuboid::new(0.82, 0.12, 0.17))),
+                MeshMaterial3d(base),
+                Transform::from_xyz(0.0, 0.16, 0.0),
+                Pickable::IGNORE,
+            ));
+
+            let face = meshes.add(Rectangle::new(WIDTH, HEIGHT));
+            let portrait = materials.add(StandardMaterial {
+                base_color_texture: Some(image.clone()),
+                unlit: true,
+                ..default()
+            });
+            // Separate outward-facing planes retain each face's normal UV order.
+            // A single double-sided plane would mirror the portrait from behind.
+            // The archive's grayscale back is deliberately not a rear texture:
+            // camera direction must not suggest a change of investigator state.
+            for (depth, yaw) in [(0.016, 0.0), (-0.016, PI)] {
+                standee.spawn((
+                    Mesh3d(face.clone()),
+                    MeshMaterial3d(portrait.clone()),
+                    Transform::from_xyz(0.0, center, depth)
+                        .with_rotation(Quat::from_rotation_y(yaw)),
+                    Pickable::IGNORE,
+                ));
+            }
+        });
+}

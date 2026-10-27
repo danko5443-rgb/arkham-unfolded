@@ -1,0 +1,29 @@
+{
+  "purpose": "Three authored inline symbols for the bounded Jacqueline experiment. Artwork remains external; identity does not establish publisher authority.",
+  "path": "resources/other/unclassified/en/sce-base-save/font_arkhamicons--URL--49b407be28313ac7ad1b.unity3d",
+  "asset_id": "49b407be28313ac7ad1bbff334633e10e7378f1b344830018aa1dc462ba62751",
+  "sha256": "ed518b255b4a177f246525d5fd6ed626c468cb46d843cca62cf72978faa1fb80",
+  "bytes": 66412,
+  "block_offset": 130,
+  "block_length": 66282,
+  "decoded_length": 154116,
+  "font_offset": 9592,
+  "font_length": 144020,
+  "font_sha256": "186176d7243c72d272a50c24e833fb77d983e7c4c6c99bc64f89c8322dbd8187",
+  "font_identity": "arkhamicons Regular, Version 1.0, TrueType",
+  "extraction": "Verify the entire bundle before using its fixed LZMA block. Insert decoded_length as an eight-byte little-endian integer after the block's five property bytes, decode LZMA-alone, then verify the font slice. In memory only; no archive writes or generic Unity importer.",
+  "glyphs": {
+    "willpower": { "character": "f", "codepoint": "U+0066", "evidence": "SCE source object Making Preparations (GUID 18247d), LuaScript SKILL_LIST maps willpower to f with font_arkhamicons; inspected head silhouette." },
+    "wild": { "character": "j", "codepoint": "U+006A", "evidence": "Rendered outline matches the stylized question mark on Promise of Power. This inline mark omits the card skill pip's diamond background." },
+    "curse": { "character": "y", "codepoint": "U+0079", "evidence": "Rendered three-hook outline matches the inline curse mark in Promise of Power's rules text. SCE luckyPenny UI uses zy for bless/curse; z is the star mark." }
+  },
+  "source_save": {
+    "path": "sources/save/Arkham SCE 4.9.3.json",
+    "sha256": "87066ff3e8f3a945b38d5caad22d4cc9ac430bc2b7c11686c98c0f7cbdefed4a"
+  },
+  "visual_reference": {
+    "path": "images/cards/official/en/sce-base-save/The Innsmouth Conspiracy/07032--Promise of Power/b30f06cacc702078/face.png",
+    "sha256": "2ee14826c949db4a6d1e3ebcd4a6dd77638d1e41edb4b87f70419ceff6fce61f"
+  },
+  "presentation": "One monochrome outline supports light and dark text colors. Prefer at least 24px for the thinner curse mark. Missing or changed artwork uses English labels, never literal font-code letters. No loose TTF/OTF/WOFF/SVG files were found in the archive."
+}

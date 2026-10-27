@@ -17,6 +17,10 @@ use bevy::{
 use sha2::{Digest, Sha256};
 use std::path::{Path, PathBuf};
 
+mod standees;
+mod symbols;
+use symbols::Symbol;
+
 const PANEL: f32 = 390.0;
 const INK: Color = Color::srgb(0.035, 0.055, 0.065);
 const PAPER: Color = Color::srgb(0.91, 0.89, 0.81);
@@ -131,6 +135,8 @@ struct Art {
     available: usize,
     token_handles: Vec<(TokenFace, Handle<Image>)>,
     reminder: Option<Handle<Image>>,
+    investigators: Vec<(String, Handle<Image>)>,
+    symbol_font: Option<Handle<Font>>,
 }
 
 #[derive(serde::Deserialize)]
@@ -329,11 +335,18 @@ pub fn run() -> Result<(), String> {
             face["sha256"].as_str()?,
         )
     });
+    let investigators = standees::load(app.world().resource::<AssetServer>(), art_root.as_deref());
+    let symbol_font = symbols::load(
+        art_root.as_deref(),
+        &mut app.world_mut().resource_mut::<Assets<Font>>(),
+    );
     app.insert_resource(Art {
         handles,
         available,
         token_handles,
         reminder,
+        investigators,
+        symbol_font,
     });
     app.run();
     Ok(())
@@ -752,22 +765,104 @@ fn camera_controls(
 fn text(value: impl Into<String>, size: f32, color: Color) -> impl Bundle {
     // The embedded font is intentionally sufficient without the external archive.
     // Spell punctuation with supported glyphs so token modifiers never become boxes.
-    let value = value
-        .into()
-        .replace(['−', '–'], "-")
-        .replace('§', "section ")
-        .replace('·', " / ")
-        .replace('—', " - ")
-        .replace('→', ">")
-        .replace('←', "<");
     (
-        Text::new(value),
+        Text::new(readable_text(value.into())),
         TextFont {
             font_size: FontSize::Px(size),
             ..default()
         },
         TextColor(color),
     )
+}
+
+fn readable_text(value: String) -> String {
+    value
+        .replace(['−', '–'], "-")
+        .replace('§', "section ")
+        .replace('·', " / ")
+        .replace('—', " - ")
+        .replace('→', ">")
+        .replace('←', "<")
+}
+
+enum Run<'a> {
+    Words(&'a str),
+    Icon(Symbol),
+}
+
+// These few runs are explicitly authored for this case, not parsed from rules text.
+// Plain-English labels remain available even when the displayed text uses glyphs.
+fn symbol_text(
+    parent: &mut ChildSpawnerCommands,
+    font: &Option<Handle<Font>>,
+    runs: &[Run<'_>],
+    label: &str,
+    size: f32,
+    color: Color,
+) {
+    let Some(font) = font else {
+        parent.spawn((
+            text(label, size, color),
+            AccessibleLabel::new(label),
+            Pickable::IGNORE,
+        ));
+        return;
+    };
+    parent
+        .spawn((
+            text("", size, color),
+            AccessibleLabel::new(label),
+            Pickable::IGNORE,
+        ))
+        .with_children(|parent| {
+            for run in runs {
+                let (value, text_font) = match run {
+                    Run::Icon(symbol) => (
+                        // Keep an adjacent quantity with its symbol across font runs.
+                        // NBSP can still break on overflow in the pinned renderer.
+                        format!("\u{2060}{}\u{2060}", symbol.glyph()),
+                        TextFont {
+                            font: font.clone().into(),
+                            font_size: FontSize::Px(size.max(18.0) * 1.35),
+                            ..default()
+                        },
+                    ),
+                    Run::Words(words) => (
+                        readable_text((*words).to_owned()),
+                        TextFont {
+                            font_size: FontSize::Px(size),
+                            ..default()
+                        },
+                    ),
+                };
+                parent.spawn((TextSpan::new(value), text_font, TextColor(color)));
+            }
+        });
+}
+
+fn skill_summary(
+    parent: &mut ChildSpawnerCommands,
+    art: &Art,
+    view: &Observation,
+    size: f32,
+    color: Color,
+) {
+    symbol_text(
+        parent,
+        &art.symbol_font,
+        &[
+            Run::Icon(Symbol::Willpower),
+            Run::Words(&format!(" {} / TEST ", view.skill_value)),
+            Run::Icon(Symbol::Willpower),
+            Run::Words(&format!(" ({})", view.difficulty)),
+        ],
+        &format!(
+            "Willpower {} / Test willpower ({})",
+            view.skill_value, view.difficulty
+        ),
+        size,
+        color,
+    );
 }
 
 fn button(parent: &mut ChildSpawnerCommands, label: &str, action: Action, primary: bool) {
@@ -850,7 +945,6 @@ fn rebuild_view(
         Vec3::new(4.3, 0.15, 2.65),
         if view.jacqueline_used { MUTED } else { GOLD },
     );
-    label(&mut commands, "STUDY", Vec3::new(0.0, 0.1, -3.55), GOLD);
     let colors = [
         Color::srgb(0.66, 0.43, 0.20),
         Color::srgb(0.62, 0.23, 0.26),
@@ -872,33 +966,26 @@ fn rebuild_view(
                 TransientScene,
             ));
         }
-        let material = materials.add(StandardMaterial {
-            base_color: colors[i % colors.len()],
-            metallic: 0.12,
-            perceptual_roughness: 0.62,
-            ..default()
-        });
-        commands.spawn((
-            Mesh3d(meshes.add(Cylinder::new(0.53, 0.14))),
-            MeshMaterial3d(materials.add(GOLD)),
-            Transform::from_xyz(x, 0.1, z),
-            Pickable::IGNORE,
-            TransientScene,
-        ));
-        commands.spawn((
-            Mesh3d(meshes.add(Capsule3d::new(0.25, 0.72))),
-            MeshMaterial3d(material),
-            Transform::from_xyz(x, 0.8, z),
-            Pickable::IGNORE,
-            TransientScene,
-        ));
+        let image = art
+            .investigators
+            .iter()
+            .find(|(name, _)| name == &investigator.name)
+            .map(|(_, image)| image);
+        standees::spawn(
+            &mut commands,
+            &mut meshes,
+            &mut materials,
+            image,
+            Vec3::new(x, 0.0, z),
+            colors[i % colors.len()],
+        );
         label(
             &mut commands,
             format!(
                 "{}\n{} · Horror {}/{}",
                 investigator.name, investigator.location, investigator.horror, investigator.sanity
             ),
-            Vec3::new(x, 1.65, z),
+            Vec3::new(x, 2.05, z),
             PAPER,
         );
     }
@@ -1105,14 +1192,7 @@ fn rebuild_view(
             });
             parent.spawn(text(mode, 13.0, GOLD));
             parent.spawn(text("Rotting Remains", 27.0, PAPER));
-            parent.spawn(text(
-                format!(
-                    "WILLPOWER {}   /   TEST {}",
-                    view.skill_value, view.difficulty
-                ),
-                17.0,
-                GOLD,
-            ));
+            skill_summary(parent, &art, &view, 17.0, GOLD);
             parent.spawn(text(&view.prompt, 19.0, PAPER));
             if table.replay.is_none() {
                 for choice in &view.choices {
@@ -1224,7 +1304,35 @@ fn rebuild_view(
             ))
             .with_children(|parent| {
                 parent.spawn(text(card.title, 25.0, GOLD));
-                parent.spawn(text(card.kind, 14.0, MUTED));
+                if index == 1 {
+                    symbol_text(
+                        parent,
+                        &art.symbol_font,
+                        &[
+                            Run::Words("Skill / 4 "),
+                            Run::Icon(Symbol::Wild),
+                            Run::Words(" / Level 0"),
+                        ],
+                        card.kind,
+                        16.0,
+                        MUTED,
+                    );
+                } else if index == 2 {
+                    symbol_text(
+                        parent,
+                        &art.symbol_font,
+                        &[
+                            Run::Words("Investigator / "),
+                            Run::Icon(Symbol::Willpower),
+                            Run::Words(" 5"),
+                        ],
+                        card.kind,
+                        16.0,
+                        MUTED,
+                    );
+                } else {
+                    parent.spawn(text(card.kind, 14.0, MUTED));
+                }
                 if let Some(image) = &art.handles[index] {
                     parent.spawn((
                         ImageNode::new(image.clone()),
@@ -1236,7 +1344,37 @@ fn rebuild_view(
                         },
                     ));
                 }
-                parent.spawn(text(card.text, 16.0, PAPER));
+                match index {
+                    0 => symbol_text(
+                        parent,
+                        &art.symbol_font,
+                        &[
+                            Run::Words("Revelation — Test "),
+                            Run::Icon(Symbol::Willpower),
+                            Run::Words(" (3). For each point you fail by, take 1 horror."),
+                        ],
+                        card.text,
+                        18.0,
+                        PAPER,
+                    ),
+                    1 => symbol_text(
+                        parent,
+                        &art.symbol_font,
+                        &[
+                            Run::Words("After you commit Promise of Power to a skill test, add 1"),
+                            Run::Icon(Symbol::Curse),
+                            Run::Words(
+                                " token to the chaos bag. If you cannot, take 2 horror instead.",
+                            ),
+                        ],
+                        card.text,
+                        18.0,
+                        PAPER,
+                    ),
+                    _ => {
+                        parent.spawn(text(card.text, 16.0, PAPER));
+                    }
+                }
                 button(parent, "Close card", Action::CloseInspect, false);
             });
     }
@@ -1284,11 +1422,11 @@ fn rebuild_view(
             });
     }
     if table.result_open && view.stage == Stage::Finished {
-        show_result(&mut commands, &view);
+        show_result(&mut commands, &view, &art);
     }
 }
 
-fn show_result(commands: &mut Commands, view: &Observation) {
+fn show_result(commands: &mut Commands, view: &Observation, art: &Art) {
     let failed = view.horror_dealt > 0;
     let accent = if failed {
         Color::srgb(0.95, 0.59, 0.49)
@@ -1329,7 +1467,7 @@ fn show_result(commands: &mut Commands, view: &Observation) {
         .with_children(|panel| {
             panel.spawn(text("ROTTING REMAINS / SKILL TEST COMPLETE", 14.0, GOLD));
             panel.spawn(text(if failed { "TEST FAILED" } else { "TEST SUCCEEDED" }, 36.0, accent));
-            panel.spawn(text(format!("Final willpower {}  /  Difficulty {}", view.skill_value, view.difficulty), 24.0, PAPER));
+            skill_summary(panel, art, view, 24.0, PAPER);
             panel.spawn(text(format!("{} additional horror", view.horror_dealt), 28.0, accent));
             if let Some(jacqueline) = view.investigators.iter().find(|i| i.name == "Jacqueline Fine") {
                 panel.spawn(text(format!("Jacqueline now has {} / {} total horror.", jacqueline.horror, jacqueline.sanity), 18.0, PAPER));
@@ -1575,6 +1713,8 @@ mod result_modal_tests {
                 available: 0,
                 token_handles: vec![],
                 reminder: None,
+                investigators: Vec::new(),
+                symbol_font: None,
             })
             .add_systems(Update, rebuild_view.after(handle_actions));
         let reminder = app
