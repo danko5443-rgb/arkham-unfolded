@@ -7,7 +7,7 @@ use crate::{
 };
 use bevy::{
     input::mouse::{AccumulatedMouseMotion, AccumulatedMouseScroll, MouseScrollUnit},
-    input_focus::tab_navigation::TabIndex,
+    input_focus::tab_navigation::{TabGroup, TabIndex},
     picking::hover::Hovered,
     prelude::*,
     render::view::screenshot::{Capturing, Screenshot, save_to_disk},
@@ -17,6 +17,7 @@ use bevy::{
 use sha2::{Digest, Sha256};
 use std::path::{Path, PathBuf};
 
+mod inspection;
 mod standees;
 mod symbols;
 use symbols::Symbol;
@@ -36,6 +37,7 @@ struct Card {
     kind: &'static str,
     text: &'static str,
     color: Color,
+    landscape: bool,
 }
 
 const CARDS: [Card; 3] = [
@@ -45,6 +47,7 @@ const CARDS: [Card; 3] = [
         kind: "Treachery · The Gathering",
         text: "Revelation — Test willpower (3). For each point you fail by, take 1 horror.",
         color: Color::srgb(0.40, 0.22, 0.18),
+        landscape: false,
     },
     Card {
         code: "07032",
@@ -52,6 +55,7 @@ const CARDS: [Card; 3] = [
         kind: "Skill · Four wild icons · Level 0",
         text: "After you commit Promise of Power to a skill test, add 1 curse token to the chaos bag. If you cannot, take 2 horror instead.",
         color: Color::srgb(0.29, 0.20, 0.42),
+        landscape: false,
     },
     Card {
         code: "60401",
@@ -59,6 +63,7 @@ const CARDS: [Card; 3] = [
         kind: "Investigator · Willpower 5",
         text: "Reaction — When an investigator at your location would reveal any number of chaos tokens: Reveal 2 additional tokens. Of the revealed tokens, choose and cancel 2 non-auto-fail tokens, or 1 auto-fail token. Limit once per round.\n\nElder sign: +1. If this effect is canceled or ignored, draw 1 card.\n\nThis experiment has no elder sign reveal or other replacement assets.",
         color: Color::srgb(0.30, 0.24, 0.48),
+        landscape: true,
     },
 ];
 
@@ -309,6 +314,7 @@ pub fn run() -> Result<(), String> {
         .add_systems(
             Update,
             (
+                mark_window_resized,
                 handle_actions,
                 camera_controls,
                 rebuild_view,
@@ -454,6 +460,13 @@ fn setup_scene(
     ));
     for (i, card) in CARDS.iter().enumerate() {
         let x = -2.0 + i as f32 * 2.4;
+        // The source stores Jacqueline sideways in a portrait-shaped image.
+        // Rotating the original face preserves both its artwork and proportions.
+        let rotation = Quat::from_rotation_y(if card.landscape {
+            std::f32::consts::FRAC_PI_2
+        } else {
+            0.0
+        });
         let material = materials.add(StandardMaterial {
             base_color: if art.handles[i].is_some() {
                 Color::WHITE
@@ -468,14 +481,14 @@ fn setup_scene(
         commands.spawn((
             Mesh3d(meshes.add(Cuboid::new(1.85, 0.07, 2.60))),
             MeshMaterial3d(materials.add(Color::srgb(0.14, 0.12, 0.10))),
-            Transform::from_xyz(x, 0.08, 1.9),
+            Transform::from_xyz(x, 0.08, 1.9).with_rotation(rotation),
             Pickable::IGNORE,
         ));
         commands
             .spawn((
-                Mesh3d(meshes.add(Plane3d::default().mesh().size(1.79, 2.54))),
+                Mesh3d(meshes.add(Plane3d::default().mesh().size(1.80, 2.52))),
                 MeshMaterial3d(material),
-                Transform::from_xyz(x, 0.125, 1.9),
+                Transform::from_xyz(x, 0.125, 1.9).with_rotation(rotation),
             ))
             .observe(move |_: On<PointerClick>, mut queue: ResMut<Actions>| {
                 queue.0.push(Action::Inspect(i))
@@ -500,9 +513,9 @@ fn setup_scene(
     commands.spawn((Camera3d::default(), Transform::default(), MainCamera));
     commands
         .spawn((
-            Mesh3d(meshes.add(Cylinder::new(0.35, 0.10))),
+            Mesh3d(meshes.add(Cylinder::new(0.20, 0.06))),
             MeshMaterial3d(materials.add(Color::srgb(0.35, 0.35, 0.35))),
-            Transform::from_xyz(4.3, 0.22, 1.9),
+            Transform::from_xyz(4.55, 0.22, 1.9),
             Pickable::IGNORE,
             ReminderPose {
                 angle: 0.0,
@@ -512,18 +525,18 @@ fn setup_scene(
         .with_children(|parent| {
             for (y, rotation, color) in [
                 (
-                    0.055,
+                    0.035,
                     -std::f32::consts::FRAC_PI_2,
                     Color::srgb(0.35, 0.95, 0.65),
                 ),
                 (
-                    -0.055,
+                    -0.035,
                     std::f32::consts::FRAC_PI_2,
                     Color::srgb(0.44, 0.35, 0.47),
                 ),
             ] {
                 parent.spawn((
-                    Mesh3d(meshes.add(Circle::new(0.34))),
+                    Mesh3d(meshes.add(Circle::new(0.19))),
                     MeshMaterial3d(materials.add(StandardMaterial {
                         base_color: color,
                         base_color_texture: art.reminder.clone(),
@@ -545,7 +558,9 @@ fn handle_actions(
 ) {
     for action in queue.0.drain(..) {
         // A modal consumes interaction with the underlying table, including queued clicks.
-        if table.result_open && !matches!(action, Action::DismissResult) {
+        if (table.result_open && !matches!(action, Action::DismissResult))
+            || (table.inspect.is_some() && !matches!(action, Action::CloseInspect))
+        {
             continue;
         }
         match action {
@@ -688,6 +703,20 @@ fn handle_actions(
     }
 }
 
+fn mark_window_resized(
+    windows: Query<&Window>,
+    mut previous_size: Local<Option<Vec2>>,
+    mut table: ResMut<Tabletop>,
+) {
+    if let Some(window) = windows.iter().next() {
+        let size = Vec2::new(window.width(), window.height());
+        if previous_size.as_ref() != Some(&size) {
+            *previous_size = Some(size);
+            table.dirty = true;
+        }
+    }
+}
+
 // Bevy injects each input, resource and query independently into this system.
 #[allow(clippy::too_many_arguments)]
 fn camera_controls(
@@ -701,8 +730,8 @@ fn camera_controls(
     mut orbit: ResMut<Orbit>,
     mut camera: Single<&mut Transform, With<MainCamera>>,
 ) {
-    let scene_pointer = !table.result_open
-        && table.inspect.is_none()
+    let modal_open = table.result_open || table.inspect.is_some();
+    let scene_pointer = !modal_open
         && !table.history
         && window
             .cursor_position()
@@ -726,14 +755,14 @@ fn camera_controls(
         (KeyCode::Equal, 0.0, 0.0, -5.0),
         (KeyCode::Minus, 0.0, 0.0, 5.0),
     ] {
-        if !table.result_open && keys.pressed(key) {
+        if !modal_open && keys.pressed(key) {
             orbit.yaw += yaw * time.delta_secs();
             orbit.pitch += pitch * time.delta_secs();
             orbit.distance += zoom * time.delta_secs();
             changed = true;
         }
     }
-    if !table.result_open && keys.just_pressed(KeyCode::Home) {
+    if !modal_open && keys.just_pressed(KeyCode::Home) {
         *orbit = Orbit::default();
         changed = true;
     }
@@ -915,6 +944,8 @@ fn rebuild_view(
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
     mut reminder: Single<&mut ReminderPose>,
+    mut rendered_view: Local<Option<Observation>>,
+    windows: Query<&Window>,
 ) {
     if !table.dirty {
         return;
@@ -923,207 +954,230 @@ fn rebuild_view(
     for entity in &panels {
         commands.entity(entity).despawn();
     }
-    for entity in &transient {
-        commands.entity(entity).despawn();
-    }
     let view = table.view();
-    reminder.target = if view.jacqueline_used {
-        std::f32::consts::PI
-    } else {
-        0.0
-    };
-    label(
-        &mut commands,
-        format!(
-            "Reaction reminder\n{}",
-            if view.jacqueline_used {
-                "USED THIS ROUND"
-            } else {
-                "READY"
-            }
-        ),
-        Vec3::new(4.3, 0.15, 2.65),
-        if view.jacqueline_used { MUTED } else { GOLD },
-    );
-    let colors = [
-        Color::srgb(0.66, 0.43, 0.20),
-        Color::srgb(0.62, 0.23, 0.26),
-        Color::srgb(0.37, 0.28, 0.64),
-    ];
-    for (i, investigator) in view.investigators.iter().enumerate() {
-        let here = investigator.location == "Study";
-        let (x, z) = if here {
-            (-3.4 + i as f32 * 3.3, -2.3)
-        } else {
-            (-4.6, -0.35)
-        };
-        if !here {
-            commands.spawn((
-                Mesh3d(meshes.add(Cuboid::new(2.2, 0.035, 1.6))),
-                MeshMaterial3d(materials.add(Color::srgb(0.12, 0.20, 0.22))),
-                Transform::from_xyz(x, -0.02, z),
-                Pickable::IGNORE,
-                TransientScene,
-            ));
+    // UI-only redraws retain the scene entities and any in-flight reveal motion.
+    if rendered_view.as_ref() != Some(&view) {
+        for entity in &transient {
+            commands.entity(entity).despawn();
         }
-        let image = art
-            .investigators
-            .iter()
-            .find(|(name, _)| name == &investigator.name)
-            .map(|(_, image)| image);
-        standees::spawn(
-            &mut commands,
-            &mut meshes,
-            &mut materials,
-            image,
-            Vec3::new(x, 0.0, z),
-            colors[i % colors.len()],
-        );
+        reminder.target = if view.jacqueline_used {
+            std::f32::consts::PI
+        } else {
+            0.0
+        };
         label(
             &mut commands,
             format!(
-                "{}\n{} · Horror {}/{}",
-                investigator.name, investigator.location, investigator.horror, investigator.sanity
+                "Reaction reminder\n{}",
+                if view.jacqueline_used {
+                    "USED THIS ROUND"
+                } else {
+                    "READY"
+                }
             ),
-            Vec3::new(x, 2.05, z),
-            PAPER,
+            Vec3::new(4.55, 0.15, 2.65),
+            if view.jacqueline_used { MUTED } else { GOLD },
         );
-    }
-    label(
-        &mut commands,
-        format!(
-            "Chaos bag · {}\n{} curse in bag",
-            view.bag_count, view.curses_in_bag
-        ),
-        Vec3::new(-4.5, 1.2, 1.75),
-        GOLD,
-    );
-    for (i, card) in CARDS.iter().enumerate() {
-        let status = if i == 1 && view.promise_committed {
-            "Committed · +4"
-        } else {
-            "Click to inspect"
-        };
+        let colors = [
+            Color::srgb(0.66, 0.43, 0.20),
+            Color::srgb(0.62, 0.23, 0.26),
+            Color::srgb(0.37, 0.28, 0.64),
+        ];
+        for (i, investigator) in view.investigators.iter().enumerate() {
+            let here = investigator.location == "Study";
+            let (x, z) = if here {
+                (-3.4 + i as f32 * 3.3, -2.3)
+            } else {
+                (-4.6, -0.35)
+            };
+            if !here {
+                commands.spawn((
+                    Mesh3d(meshes.add(Cuboid::new(2.2, 0.035, 1.6))),
+                    MeshMaterial3d(materials.add(Color::srgb(0.12, 0.20, 0.22))),
+                    Transform::from_xyz(x, -0.02, z),
+                    Pickable::IGNORE,
+                    TransientScene,
+                ));
+            }
+            let image = art
+                .investigators
+                .iter()
+                .find(|(name, _)| name == &investigator.name)
+                .map(|(_, image)| image);
+            standees::spawn(
+                &mut commands,
+                &mut meshes,
+                &mut materials,
+                image,
+                Vec3::new(x, 0.0, z),
+                colors[i % colors.len()],
+            );
+            label(
+                &mut commands,
+                format!(
+                    "{}\n{} · Horror {}/{}",
+                    investigator.name,
+                    investigator.location,
+                    investigator.horror,
+                    investigator.sanity
+                ),
+                Vec3::new(x, 2.05, z),
+                PAPER,
+            );
+        }
         label(
             &mut commands,
-            format!("{}\n{status}", card.title),
-            Vec3::new(-2.0 + i as f32 * 2.4, 0.2, 3.36),
-            PAPER,
+            format!(
+                "Chaos bag · {}\n{} curse in bag",
+                view.bag_count, view.curses_in_bag
+            ),
+            Vec3::new(-4.5, 1.2, 1.75),
+            GOLD,
         );
-    }
-    if view.promise_committed {
-        let frame = materials.add(StandardMaterial {
-            base_color: GOLD,
-            unlit: true,
-            ..default()
-        });
-        for (size, at) in [
-            (Vec3::new(2.0, 0.055, 0.09), Vec3::new(0.4, 0.15, 0.57)),
-            (Vec3::new(2.0, 0.055, 0.09), Vec3::new(0.4, 0.15, 3.23)),
-            (Vec3::new(0.09, 0.055, 2.7), Vec3::new(-0.57, 0.15, 1.9)),
-            (Vec3::new(0.09, 0.055, 2.7), Vec3::new(1.37, 0.15, 1.9)),
-        ] {
-            commands.spawn((
-                Mesh3d(meshes.add(Cuboid::from_size(size))),
-                MeshMaterial3d(frame.clone()),
-                Transform::from_translation(at),
-                Pickable::IGNORE,
-                TransientScene,
-            ));
+        for (i, card) in CARDS.iter().enumerate() {
+            let status = if i == 1 && view.promise_committed {
+                "Committed · +4"
+            } else {
+                "Click to inspect"
+            };
+            label(
+                &mut commands,
+                format!("{}\n{status}", card.title),
+                Vec3::new(
+                    -2.0 + i as f32 * 2.4,
+                    0.2,
+                    if card.landscape { 2.96 } else { 3.36 },
+                ),
+                PAPER,
+            );
         }
-    }
-    let mut canceled_index = 0;
-    let mut active_index = 0;
-    let has_canceled = view
-        .tokens
-        .iter()
-        .any(|token| token.status == TokenStatus::Canceled);
-    for (i, token) in view.tokens.iter().enumerate() {
-        let canceled = token.status == TokenStatus::Canceled;
-        let x = if canceled {
-            let x = -4.5 + canceled_index as f32 * 1.3;
-            canceled_index += 1;
-            x
-        } else if has_canceled {
-            let x = -0.6 + active_index as f32 * 1.3;
-            active_index += 1;
-            x
-        } else {
-            -1.8 + i as f32 * 1.30
-        };
-        let color = match token.status {
-            TokenStatus::Pending => GOLD,
-            TokenStatus::Resolved => Color::srgb(0.28, 0.62, 0.51),
-            TokenStatus::Canceled => Color::srgb(0.37, 0.25, 0.28),
-        };
-        let mut token_entity = commands.spawn((
-            Mesh3d(meshes.add(Cylinder::new(0.46, 0.12))),
-            MeshMaterial3d(materials.add(StandardMaterial {
-                base_color: color,
-                metallic: 0.32,
-                perceptual_roughness: 0.5,
-                ..default()
-            })),
-            Transform::from_xyz(x, 0.15, -0.20).with_scale(Vec3::splat(0.5)),
-            Pickable::IGNORE,
-            TransientScene,
-            Appearing,
-        ));
-        if let Some((_, image)) = art
-            .token_handles
-            .iter()
-            .find(|(face, _)| *face == token.face)
-        {
-            // The plane's UV top points toward -Z, upright from the default camera.
-            // Parenting carries the original face through the cylinder's reveal animation.
-            token_entity.with_child((
-                Mesh3d(meshes.add(Plane3d::default().mesh().size(0.88, 0.88))),
-                MeshMaterial3d(materials.add(StandardMaterial {
-                    base_color: if canceled {
-                        Color::srgb(0.35, 0.35, 0.35)
-                    } else {
-                        Color::WHITE
-                    },
-                    base_color_texture: Some(image.clone()),
-                    alpha_mode: AlphaMode::Mask(0.5),
-                    unlit: true,
-                    ..default()
-                })),
-                Transform::from_xyz(0.0, 0.065, 0.0),
-                Pickable::IGNORE,
-            ));
-        }
-        if canceled {
-            let crossed = materials.add(StandardMaterial {
-                base_color: Color::srgb(1.0, 0.55, 0.48),
+        if view.promise_committed {
+            let frame = materials.add(StandardMaterial {
+                base_color: GOLD,
                 unlit: true,
                 ..default()
             });
-            for angle in [-std::f32::consts::FRAC_PI_4, std::f32::consts::FRAC_PI_4] {
-                token_entity.with_child((
-                    Mesh3d(meshes.add(Cuboid::new(0.75, 0.02, 0.065))),
-                    MeshMaterial3d(crossed.clone()),
-                    Transform::from_xyz(0.0, 0.085, 0.0)
-                        .with_rotation(Quat::from_rotation_y(angle)),
+            for (size, at) in [
+                (Vec3::new(2.0, 0.055, 0.09), Vec3::new(0.4, 0.15, 0.57)),
+                (Vec3::new(2.0, 0.055, 0.09), Vec3::new(0.4, 0.15, 3.23)),
+                (Vec3::new(0.09, 0.055, 2.7), Vec3::new(-0.57, 0.15, 1.9)),
+                (Vec3::new(0.09, 0.055, 2.7), Vec3::new(1.37, 0.15, 1.9)),
+            ] {
+                commands.spawn((
+                    Mesh3d(meshes.add(Cuboid::from_size(size))),
+                    MeshMaterial3d(frame.clone()),
+                    Transform::from_translation(at),
                     Pickable::IGNORE,
+                    TransientScene,
                 ));
             }
         }
-        let status = match token.status {
-            TokenStatus::Pending => "Revealed",
-            TokenStatus::Resolved => "Resolved",
-            TokenStatus::Canceled => "Canceled",
-        };
-        label(
-            &mut commands,
-            format!("#{}  {}\n{status}", token.id + 1, token.face.label()),
-            Vec3::new(x, 0.1, -1.2),
-            if token.status == TokenStatus::Canceled {
-                MUTED
+        let mut canceled_index = 0;
+        let mut active_index = 0;
+        let has_canceled = view
+            .tokens
+            .iter()
+            .any(|token| token.status == TokenStatus::Canceled);
+        for (i, token) in view.tokens.iter().enumerate() {
+            let canceled = token.status == TokenStatus::Canceled;
+            let x = if canceled {
+                let x = -4.5 + canceled_index as f32 * 1.3;
+                canceled_index += 1;
+                x
+            } else if has_canceled {
+                let x = -0.6 + active_index as f32 * 1.3;
+                active_index += 1;
+                x
             } else {
-                PAPER
-            },
-        );
+                -1.8 + i as f32 * 1.30
+            };
+            let color = match token.status {
+                TokenStatus::Pending => GOLD,
+                TokenStatus::Resolved => Color::srgb(0.28, 0.62, 0.51),
+                TokenStatus::Canceled => Color::srgb(0.37, 0.25, 0.28),
+            };
+            let is_new = rendered_view.as_ref().is_none_or(|previous| {
+                !previous
+                    .tokens
+                    .iter()
+                    .any(|held| held.id == token.id && held.face == token.face)
+            });
+            let mut token_entity = commands.spawn((
+                Mesh3d(meshes.add(Cylinder::new(0.46, 0.12))),
+                MeshMaterial3d(materials.add(StandardMaterial {
+                    base_color: color,
+                    metallic: 0.32,
+                    perceptual_roughness: 0.5,
+                    ..default()
+                })),
+                Transform::from_xyz(x, 0.15, -0.20).with_scale(Vec3::splat(if is_new {
+                    0.5
+                } else {
+                    1.0
+                })),
+                Pickable::IGNORE,
+                TransientScene,
+            ));
+            if is_new {
+                token_entity.insert(Appearing);
+            }
+            if let Some((_, image)) = art
+                .token_handles
+                .iter()
+                .find(|(face, _)| *face == token.face)
+            {
+                // The plane's UV top points toward -Z, upright from the default camera.
+                // Parenting carries the original face through the cylinder's reveal animation.
+                token_entity.with_child((
+                    Mesh3d(meshes.add(Plane3d::default().mesh().size(0.88, 0.88))),
+                    MeshMaterial3d(materials.add(StandardMaterial {
+                        base_color: if canceled {
+                            Color::srgb(0.35, 0.35, 0.35)
+                        } else {
+                            Color::WHITE
+                        },
+                        base_color_texture: Some(image.clone()),
+                        alpha_mode: AlphaMode::Mask(0.5),
+                        unlit: true,
+                        ..default()
+                    })),
+                    Transform::from_xyz(0.0, 0.065, 0.0),
+                    Pickable::IGNORE,
+                ));
+            }
+            if canceled {
+                let crossed = materials.add(StandardMaterial {
+                    base_color: Color::srgb(1.0, 0.55, 0.48),
+                    unlit: true,
+                    ..default()
+                });
+                for angle in [-std::f32::consts::FRAC_PI_4, std::f32::consts::FRAC_PI_4] {
+                    token_entity.with_child((
+                        Mesh3d(meshes.add(Cuboid::new(0.75, 0.02, 0.065))),
+                        MeshMaterial3d(crossed.clone()),
+                        Transform::from_xyz(0.0, 0.085, 0.0)
+                            .with_rotation(Quat::from_rotation_y(angle)),
+                        Pickable::IGNORE,
+                    ));
+                }
+            }
+            let status = match token.status {
+                TokenStatus::Pending => "Revealed",
+                TokenStatus::Resolved => "Resolved",
+                TokenStatus::Canceled => "Canceled",
+            };
+            label(
+                &mut commands,
+                format!("#{}  {}\n{status}", token.id + 1, token.face.label()),
+                Vec3::new(x, 0.1, -1.2),
+                if token.status == TokenStatus::Canceled {
+                    MUTED
+                } else {
+                    PAPER
+                },
+            );
+        }
+        *rendered_view = Some(view.clone());
     }
     commands
         .spawn((
@@ -1283,100 +1337,13 @@ fn rebuild_view(
             ));
         });
     if let Some(index) = table.inspect {
-        let card = &CARDS[index];
-        commands
-            .spawn((
-                Node {
-                    position_type: PositionType::Absolute,
-                    left: px(24),
-                    top: px(120),
-                    width: px(350),
-                    padding: UiRect::all(px(22)),
-                    flex_direction: FlexDirection::Column,
-                    row_gap: px(13),
-                    border: UiRect::all(px(1)),
-                    border_radius: BorderRadius::all(px(7)),
-                    ..default()
-                },
-                BackgroundColor(Color::srgb(0.07, 0.10, 0.115)),
-                BorderColor::all(GOLD),
-                Panel,
-            ))
-            .with_children(|parent| {
-                parent.spawn(text(card.title, 25.0, GOLD));
-                if index == 1 {
-                    symbol_text(
-                        parent,
-                        &art.symbol_font,
-                        &[
-                            Run::Words("Skill / 4 "),
-                            Run::Icon(Symbol::Wild),
-                            Run::Words(" / Level 0"),
-                        ],
-                        card.kind,
-                        16.0,
-                        MUTED,
-                    );
-                } else if index == 2 {
-                    symbol_text(
-                        parent,
-                        &art.symbol_font,
-                        &[
-                            Run::Words("Investigator / "),
-                            Run::Icon(Symbol::Willpower),
-                            Run::Words(" 5"),
-                        ],
-                        card.kind,
-                        16.0,
-                        MUTED,
-                    );
-                } else {
-                    parent.spawn(text(card.kind, 14.0, MUTED));
-                }
-                if let Some(image) = &art.handles[index] {
-                    parent.spawn((
-                        ImageNode::new(image.clone()),
-                        Node {
-                            width: px(175),
-                            height: px(245),
-                            align_self: AlignSelf::Center,
-                            ..default()
-                        },
-                    ));
-                }
-                match index {
-                    0 => symbol_text(
-                        parent,
-                        &art.symbol_font,
-                        &[
-                            Run::Words("Revelation — Test "),
-                            Run::Icon(Symbol::Willpower),
-                            Run::Words(" (3). For each point you fail by, take 1 horror."),
-                        ],
-                        card.text,
-                        18.0,
-                        PAPER,
-                    ),
-                    1 => symbol_text(
-                        parent,
-                        &art.symbol_font,
-                        &[
-                            Run::Words("After you commit Promise of Power to a skill test, add 1"),
-                            Run::Icon(Symbol::Curse),
-                            Run::Words(
-                                " token to the chaos bag. If you cannot, take 2 horror instead.",
-                            ),
-                        ],
-                        card.text,
-                        18.0,
-                        PAPER,
-                    ),
-                    _ => {
-                        parent.spawn(text(card.text, 16.0, PAPER));
-                    }
-                }
-                button(parent, "Close card", Action::CloseInspect, false);
+        let viewport = windows
+            .iter()
+            .next()
+            .map_or(Vec2::new(1600.0, 1000.0), |window| {
+                Vec2::new(window.width(), window.height())
             });
+        inspection::show(&mut commands, &art, index, viewport);
     }
     if table.history {
         commands
@@ -1461,17 +1428,39 @@ fn show_result(commands: &mut Commands, view: &Observation, art: &Art) {
                 overflow: Overflow::scroll_y(), ..default()
             },
             BackgroundColor(Color::srgb(0.055, 0.085, 0.10)), BorderColor::all(accent),
-            ScrollPosition::default(), ModalDialog,
+            ScrollPosition::default(), ModalDialog, TabGroup::modal(),
         ))
         .observe(scroll_panel)
         .with_children(|panel| {
-            panel.spawn(text("ROTTING REMAINS / SKILL TEST COMPLETE", 14.0, GOLD));
-            panel.spawn(text(if failed { "TEST FAILED" } else { "TEST SUCCEEDED" }, 36.0, accent));
-            skill_summary(panel, art, view, 24.0, PAPER);
-            panel.spawn(text(format!("{} additional horror", view.horror_dealt), 28.0, accent));
-            if let Some(jacqueline) = view.investigators.iter().find(|i| i.name == "Jacqueline Fine") {
-                panel.spawn(text(format!("Jacqueline now has {} / {} total horror.", jacqueline.horror, jacqueline.sanity), 18.0, PAPER));
-            }
+            panel.spawn(Node {
+                width: percent(100), flex_direction: FlexDirection::Column,
+                align_items: AlignItems::Center, row_gap: px(12), ..default()
+            }).with_children(|header| {
+                header.spawn((text("ROTTING REMAINS / SKILL TEST COMPLETE", 14.0, GOLD),
+                    TextLayout::justify(Justify::Center)));
+                header.spawn((text(if failed { "TEST FAILED" } else { "TEST SUCCEEDED" }, 36.0, accent),
+                    TextLayout::justify(Justify::Center)));
+                skill_summary(header, art, view, 24.0, PAPER);
+                let amount = if failed { format!("+{} ", view.horror_dealt) } else { "No additional ".into() };
+                symbol_text(header, &art.symbol_font,
+                    &[Run::Words(&amount), Run::Icon(Symbol::Horror)],
+                    &format!("{} additional horror", view.horror_dealt), 28.0, accent);
+                if let Some(jacqueline) = view.investigators.iter().find(|i| i.name == "Jacqueline Fine") {
+                    let total = if failed {
+                        format!(" {} -> {} / {}", jacqueline.horror.saturating_sub(view.horror_dealt), jacqueline.horror, jacqueline.sanity)
+                    } else {
+                        format!(" {} / {} (unchanged)", jacqueline.horror, jacqueline.sanity)
+                    };
+                    let label = if failed {
+                        format!("Jacqueline's horror: {} -> {} of {}.", jacqueline.horror.saturating_sub(view.horror_dealt), jacqueline.horror, jacqueline.sanity)
+                    } else {
+                        format!("Jacqueline's horror: {} of {} (unchanged).", jacqueline.horror, jacqueline.sanity)
+                    };
+                    symbol_text(header, &art.symbol_font,
+                        &[Run::Words("Jacqueline: "), Run::Icon(Symbol::Horror), Run::Words(&total)],
+                        &label, 18.0, PAPER);
+                }
+            });
             panel.spawn(text(format!("Resolved: {}", resolved.iter().map(|t| t.face.label()).collect::<Vec<_>>().join(", ")), 17.0, MUTED));
             if auto_fail {
                 panel.spawn(text("The uncanceled auto-fail makes the test fail with a final skill value of 0. Numerical modifiers do not change that result.", 18.0, PAPER));
@@ -1630,6 +1619,102 @@ mod result_modal_tests {
     fn act(app: &mut App, action: Action) {
         app.world_mut().resource_mut::<Actions>().0.push(action);
         app.update();
+    }
+
+    #[test]
+    fn card_inspection_blocks_underlying_decisions_until_closed() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut app = pending_app(dir.path().join("live.json"));
+        act(&mut app, Action::Inspect(2));
+        act(&mut app, Action::Choose(2, "cancel-1-2".into()));
+        assert_eq!(
+            app.world().resource::<Tabletop>().view().stage,
+            Stage::Cancellation
+        );
+        act(&mut app, Action::CloseInspect);
+        act(&mut app, Action::Choose(2, "cancel-1-2".into()));
+        assert_eq!(
+            app.world().resource::<Tabletop>().view().stage,
+            Stage::Finished
+        );
+    }
+
+    #[test]
+    fn showing_and_dismissing_result_do_not_replay_token_reveal_animation() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut app = pending_app(dir.path().join("live.json"));
+        app.init_resource::<Assets<Mesh>>()
+            .init_resource::<Assets<StandardMaterial>>()
+            .init_resource::<Time>()
+            .insert_resource(Art {
+                handles: [None, None, None],
+                available: 0,
+                token_handles: vec![],
+                reminder: None,
+                investigators: Vec::new(),
+                symbol_font: None,
+            })
+            .add_systems(
+                Update,
+                (rebuild_view, animate_tokens).chain().after(handle_actions),
+            );
+        app.world_mut().spawn(ReminderPose {
+            angle: 0.0,
+            target: 0.0,
+        });
+        act(&mut app, Action::Choose(2, "cancel-1-2".into()));
+        let appearing = |app: &mut App| {
+            let world = app.world_mut();
+            world
+                .query_filtered::<Entity, With<Appearing>>()
+                .iter(world)
+                .count()
+        };
+        assert_eq!(appearing(&mut app), 4, "newly revealed tokens animate");
+        app.world_mut()
+            .resource_mut::<Time>()
+            .advance_by(std::time::Duration::from_millis(20));
+        app.update();
+        let moving_tokens: Vec<_> = {
+            let world = app.world_mut();
+            world
+                .query_filtered::<(Entity, &Transform), With<Appearing>>()
+                .iter(world)
+                .map(|(entity, transform)| (entity, transform.scale))
+                .collect()
+        };
+        app.world_mut()
+            .resource_mut::<Time>()
+            .advance_by(std::time::Duration::ZERO);
+        act(&mut app, Action::DismissResult);
+        act(&mut app, Action::ShowResult);
+        for (entity, scale) in moving_tokens {
+            assert_eq!(
+                app.world().get::<Transform>(entity).unwrap().scale,
+                scale,
+                "a modal redraw must preserve an in-flight token and its progress"
+            );
+        }
+        app.world_mut()
+            .resource_mut::<Time>()
+            .advance_by(std::time::Duration::from_secs(1));
+        app.update();
+        assert_eq!(appearing(&mut app), 0, "tokens have reached full size");
+        app.world_mut()
+            .resource_mut::<Time>()
+            .advance_by(std::time::Duration::ZERO);
+        for action in [
+            Action::DismissResult,
+            Action::ShowResult,
+            Action::DismissResult,
+        ] {
+            act(&mut app, action);
+            assert_eq!(
+                appearing(&mut app),
+                0,
+                "modal actions must not replay an existing reveal"
+            );
+        }
     }
 
     #[test]

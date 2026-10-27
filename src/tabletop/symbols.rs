@@ -1,4 +1,4 @@
-//! The three authored symbols used by this experiment, from one verified font.
+//! The authored symbols used by this experiment, from one verified font.
 
 use std::{io::Cursor, path::Path};
 
@@ -11,6 +11,7 @@ pub(super) enum Symbol {
     Wild,
     Curse,
     Willpower,
+    Horror,
 }
 
 impl Symbol {
@@ -19,6 +20,7 @@ impl Symbol {
             Self::Wild => "j",
             Self::Curse => "y",
             Self::Willpower => "f",
+            Self::Horror => "R",
         }
     }
 }

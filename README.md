@@ -21,7 +21,7 @@ In a fresh case:
 2. Choose which tokens to cancel. The centered result window explains the outcome; click **Return to table** to continue.
 3. Click **Open recorded replay**. Use **Next moment** and **Previous moment** to step through it. Those buttons appear only when another moment exists in that direction.
 
-Click any card to inspect its text. Right-drag or use the arrow keys to orbit the camera; the wheel or `+`/`-` zooms, and `Home` resets it. Moving the camera manually overrides replay's automatic following.
+Click any card to open its enlarged artwork and readable rules. Use **Close card** or `Esc` to return; on a smaller window, scroll inside the inspection to see the whole card and text. Right-drag or use the arrow keys to orbit the camera; the wheel or `+`/`-` zooms, and `Home` resets it. Moving the camera manually overrides replay's automatic following.
 
 **Close and resume:** decisions autosave to `local/experiment/curse.session.json`. Close the window and run the same command to resume. Before any decision, use **Save live session** if you want to retain that initial state. If a completed result opens on launch, click **Return to table**, then **Start another example** for a fresh run; the previous run is archived. From an unfinished case, **End this experiment** makes that restart control available.
 
