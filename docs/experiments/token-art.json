@@ -1,0 +1,68 @@
+{
+  "inspected_on": "2026-10-27",
+  "archive_release": "v1.22.11",
+  "catalog": {
+    "path": "catalog/other-resources.json",
+    "sha256": "95fd4b91b9d60f726cf486acace81a31a40098df2feace192ce878ca09a6c9b6"
+  },
+  "selection": "The five token faces used by the bounded skill-test experiment. Each image was visually inspected. The consistent 1024-pixel circular set is selected over the alternate 384-pixel square renditions and the smaller curse icon. Archive pack and classification record occurrence provenance, not publisher authentication or rules authority. Original image bytes remain outside Git and are read without modification.",
+  "archive_pack": "sce-base-save",
+  "archive_classification": "unclassified/en",
+  "faces": [
+    {
+      "semantic_face": "curse",
+      "archive_name": "token-curse",
+      "path": "images/other/unclassified/en/sce-base-save/token-curse--URL--99b4c1dd13e366b27eef.png",
+      "sha256": "1b6f931ee161aee2c2f570a41e3f9addef062a67c904c8ef5ab433a661e12f9e",
+      "width": 1024,
+      "height": 1024,
+      "asset_id": "99b4c1dd13e366b27eefd5089822b111687e760149e68f46c19227506949f1da",
+      "original_path": "originals/objects/1b/1b6f931ee161aee2c2f570a41e3f9addef062a67c904c8ef5ab433a661e12f9e.png",
+      "format": "PNG RGBA"
+    },
+    {
+      "semantic_face": "minus_one",
+      "archive_name": "token-m1",
+      "path": "images/other/unclassified/en/sce-base-save/token-m1--URL--1a9e296081b25ca9baf0.png",
+      "sha256": "2e1a1af8ed0d6762ebd57f637078038392da9c5ecc63146f30901233457087c9",
+      "width": 1024,
+      "height": 1024,
+      "asset_id": "1a9e296081b25ca9baf0723e3c302fe30c86ead970be4f8b358296741538094e",
+      "original_path": "originals/objects/2e/2e1a1af8ed0d6762ebd57f637078038392da9c5ecc63146f30901233457087c9.png",
+      "format": "PNG RGBA"
+    },
+    {
+      "semantic_face": "zero",
+      "archive_name": "token-0",
+      "path": "images/other/unclassified/en/sce-base-save/token-0--URL--7ff653872e54829263ed.png",
+      "sha256": "dbec20a2a53a91edc7340c5fe60a40fbe42b732765cf1f21bee4433b3a61e0e6",
+      "width": 1024,
+      "height": 1024,
+      "asset_id": "7ff653872e54829263ed5b7caf5e8efe324635cca8f06991db6eb259b4996a10",
+      "original_path": "originals/objects/db/dbec20a2a53a91edc7340c5fe60a40fbe42b732765cf1f21bee4433b3a61e0e6.png",
+      "format": "PNG RGBA"
+    },
+    {
+      "semantic_face": "minus_two",
+      "archive_name": "token-m2",
+      "path": "images/other/unclassified/en/sce-base-save/token-m2--URL--f0e0b9de45cd03220cb5.png",
+      "sha256": "2c6ef7a4577cfc9b8c5c7d1bcc0315857c6d8b4b969103600ce1582f3b529227",
+      "width": 1024,
+      "height": 1024,
+      "asset_id": "f0e0b9de45cd03220cb5af3cd35dc2da97cba5864f98ed03ca0748a9cfbe4ce6",
+      "original_path": "originals/objects/2c/2c6ef7a4577cfc9b8c5c7d1bcc0315857c6d8b4b969103600ce1582f3b529227.png",
+      "format": "PNG RGBA"
+    },
+    {
+      "semantic_face": "auto_fail",
+      "archive_name": "token-red",
+      "path": "images/other/unclassified/en/sce-base-save/token-red--URL--85878cdba39d1f1dcd42.png",
+      "sha256": "5771760eef9547c85cb33e8756db4b8d000b7f4e302e9c383c28e47e9a5e6140",
+      "width": 1024,
+      "height": 1024,
+      "asset_id": "85878cdba39d1f1dcd42b407ab7451bf0ac2ba1405b05aa1ca55e69211c8f593",
+      "original_path": "originals/objects/57/5771760eef9547c85cb33e8756db4b8d000b7f4e302e9c383c28e47e9a5e6140.png",
+      "format": "PNG RGBA"
+    }
+  ]
+}

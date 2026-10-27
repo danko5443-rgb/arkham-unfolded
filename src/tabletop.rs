@@ -2,7 +2,7 @@
 //! Every displayed decision and replay moment comes from the shared rules interface.
 
 use crate::{
-    Fixture, Observation, Session, Stage, TokenStatus,
+    Fixture, Observation, Session, Stage, TokenFace, TokenStatus,
     continuity::{self, Replay},
 };
 use bevy::{
@@ -125,6 +125,19 @@ impl Default for Orbit {
 struct Art {
     handles: [Option<Handle<Image>>; 3],
     available: usize,
+    token_handles: Vec<(TokenFace, Handle<Image>)>,
+}
+
+#[derive(serde::Deserialize)]
+struct TokenArtManifest {
+    faces: Vec<TokenArtFace>,
+}
+
+#[derive(serde::Deserialize)]
+struct TokenArtFace {
+    semantic_face: TokenFace,
+    path: String,
+    sha256: String,
 }
 
 #[derive(Resource)]
@@ -291,7 +304,12 @@ pub fn run() -> Result<(), String> {
         );
     let handles = load_art(app.world().resource::<AssetServer>(), art_root.as_deref());
     let available = handles.iter().filter(|h| h.is_some()).count();
-    app.insert_resource(Art { handles, available });
+    let token_handles = load_token_art(app.world().resource::<AssetServer>(), art_root.as_deref());
+    app.insert_resource(Art {
+        handles,
+        available,
+        token_handles,
+    });
     app.run();
     Ok(())
 }
@@ -307,13 +325,37 @@ fn load_art(server: &AssetServer, root: Option<&Path>) -> [Option<Handle<Image>>
             .iter()
             .find(|face| face["code"].as_str() == Some(CARDS[i].code))?;
         let path = face["face_path"].as_str()?;
-        let bytes = std::fs::read(root.join(path)).ok()?;
-        // A changed or missing image is a missing presentation asset, never a rules block.
-        if format!("{:x}", Sha256::digest(&bytes)) != face["sha256"].as_str()? {
-            return None;
-        }
-        Some(server.load(path.to_owned()))
+        verified_image(server, root, path, face["sha256"].as_str()?)
     })
+}
+
+fn load_token_art(server: &AssetServer, root: Option<&Path>) -> Vec<(TokenFace, Handle<Image>)> {
+    let Some(root) = root else { return Vec::new() };
+    let manifest: TokenArtManifest =
+        serde_json::from_str(include_str!("../docs/experiments/token-art.json"))
+            .expect("the committed token art manifest is valid JSON");
+    manifest
+        .faces
+        .into_iter()
+        .filter_map(|face| {
+            verified_image(server, root, &face.path, &face.sha256)
+                .map(|image| (face.semantic_face, image))
+        })
+        .collect()
+}
+
+fn verified_image(
+    server: &AssetServer,
+    root: &Path,
+    path: &str,
+    sha256: &str,
+) -> Option<Handle<Image>> {
+    let bytes = std::fs::read(root.join(path)).ok()?;
+    // A changed or missing image is a presentation substitute, never a rules block.
+    if format!("{:x}", Sha256::digest(&bytes)) != sha256 {
+        return None;
+    }
+    Some(server.load(path.to_owned()))
 }
 
 fn setup_scene(
@@ -791,7 +833,7 @@ fn rebuild_view(
             TokenStatus::Resolved => Color::srgb(0.28, 0.62, 0.51),
             TokenStatus::Canceled => Color::srgb(0.37, 0.25, 0.28),
         };
-        commands.spawn((
+        let mut token_entity = commands.spawn((
             Mesh3d(meshes.add(Cylinder::new(0.46, 0.12))),
             MeshMaterial3d(materials.add(StandardMaterial {
                 base_color: color,
@@ -804,6 +846,25 @@ fn rebuild_view(
             TransientScene,
             Appearing,
         ));
+        if let Some((_, image)) = art
+            .token_handles
+            .iter()
+            .find(|(face, _)| *face == token.face)
+        {
+            // The plane's UV top points toward -Z, upright from the default camera.
+            // Parenting carries the original face through the cylinder's reveal animation.
+            token_entity.with_child((
+                Mesh3d(meshes.add(Plane3d::default().mesh().size(0.88, 0.88))),
+                MeshMaterial3d(materials.add(StandardMaterial {
+                    base_color_texture: Some(image.clone()),
+                    alpha_mode: AlphaMode::Mask(0.5),
+                    unlit: true,
+                    ..default()
+                })),
+                Transform::from_xyz(0.0, 0.065, 0.0),
+                Pickable::IGNORE,
+            ));
+        }
         let status = match token.status {
             TokenStatus::Pending => "Revealed",
             TokenStatus::Resolved => "Resolved",
@@ -812,7 +873,7 @@ fn rebuild_view(
         label(
             &mut commands,
             format!("#{}  {}\n{status}", token.id + 1, token.face.label()),
-            Vec3::new(x, 0.35, -0.20),
+            Vec3::new(x, 0.1, -1.2),
             if token.status == TokenStatus::Canceled {
                 MUTED
             } else {
