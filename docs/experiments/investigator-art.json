@@ -1,0 +1,116 @@
+{
+  "inspected_on": "2026-10-27",
+  "archive_release": "v1.22.11",
+  "selection": "Three visually inspected miniature-card portraits for the bounded experiment. Preserve each source image aspect ratio on an upright card with the same color face on both sides. The archive grayscale backs are not used: changing camera position must not suggest changed investigator state. Image bytes remain external and unmodified. Archive classification records occurrence provenance, not publisher authentication.",
+  "archive_pack": "sce-base-save",
+  "archive_classification": "unclassified/en",
+  "sources": [
+    {
+      "path": "catalog/cards.jsonl",
+      "sha256": "e89f4caec5d1c9b953cb05610bea5e4348823e12ec255d459b39d37add6a3e41"
+    },
+    {
+      "path": "catalog/other-resources.json",
+      "sha256": "95fd4b91b9d60f726cf486acace81a31a40098df2feace192ce878ca09a6c9b6"
+    },
+    {
+      "path": "catalog/inventory.json",
+      "sha256": "cf8da2d2292f2a73d8455d6dc992a9e9da8f02317e8456d83223616973dc4108"
+    },
+    {
+      "path": "catalog/bundles.json",
+      "sha256": "949b186908d2f0b4bf206ecf51ac03dbdec5f6831d5100b4d5dc4e1339b608e0"
+    },
+    {
+      "path": "sources/save/Arkham SCE 4.9.3.json",
+      "sha256": "87066ff3e8f3a945b38d5caad22d4cc9ac430bc2b7c11686c98c0f7cbdefed4a"
+    },
+    {
+      "path": "sources/release/arkham_fantasy_minicards.json",
+      "sha256": "33cc234dcec6217a5981489a62da840b97f1092b8e2b96e00a31914385b7a66a"
+    }
+  ],
+  "investigators": [
+    {
+      "name": "Tony Morgan",
+      "investigator_code": "06003",
+      "miniature_card_code": "06003-m",
+      "variant_id": "af1ad7d5512a794f",
+      "path": "images/cards/unclassified/en/sce-base-save/Unassigned expansion/06003-m--Tony Morgan/af1ad7d5512a794f/face.png",
+      "sha256": "ce2f744bd0fd0da10837f2c1ecae4b4c621797d1d2bd2e8a10d19c5d6083f8d6",
+      "width": 484,
+      "height": 744,
+      "format": "PNG RGB",
+      "source_guid": "4f0f4a",
+      "source_object_path": "/ObjectStates/100/ContainedObjects/191",
+      "source_object_type": "Card",
+      "sheet": {
+        "asset_id": "d8e522a1a236b5b9fc70190bfcf7ea11e8ed2a79fe76bb23b6ef298a2dcbcb9d",
+        "grid": [
+          7,
+          3
+        ],
+        "slot": 15
+      }
+    },
+    {
+      "name": "Patrice Hathaway",
+      "investigator_code": "06005",
+      "miniature_card_code": "06005-m",
+      "variant_id": "4f98f4d2d1046e13",
+      "path": "images/cards/unclassified/en/sce-base-save/Unassigned expansion/06005-m--Patrice Hathaway/4f98f4d2d1046e13/face.png",
+      "sha256": "59daabddd3959071d18bf37a4826bf9cee134b63e00641bc756f3858ce281867",
+      "width": 484,
+      "height": 744,
+      "format": "PNG RGB",
+      "source_guid": "877f4d",
+      "source_object_path": "/ObjectStates/100/ContainedObjects/824",
+      "source_object_type": "Card",
+      "sheet": {
+        "asset_id": "d8e522a1a236b5b9fc70190bfcf7ea11e8ed2a79fe76bb23b6ef298a2dcbcb9d",
+        "grid": [
+          7,
+          3
+        ],
+        "slot": 14
+      }
+    },
+    {
+      "name": "Jacqueline Fine",
+      "investigator_code": "60401",
+      "miniature_card_code": "60401-m",
+      "variant_id": "5eb524de9bdbc594",
+      "path": "images/cards/unclassified/en/sce-base-save/Unassigned expansion/60401-m--Jacqueline Fine/5eb524de9bdbc594/face.png",
+      "sha256": "a95b50cdd7c120f7b73e8ad28b451a32eec3d84c8882c4bff9851b84c221265d",
+      "width": 484,
+      "height": 744,
+      "format": "PNG RGB",
+      "source_guid": "9b0378",
+      "source_object_path": "/ObjectStates/100/ContainedObjects/1252",
+      "source_object_type": "Card",
+      "sheet": {
+        "asset_id": "f95d9f7e4d6bd4fdc1b6fef5886c311f434776151f145b87bab9de6ad7faac66",
+        "grid": [
+          7,
+          3
+        ],
+        "slot": 19
+      }
+    }
+  ],
+  "alternatives": {
+    "replacements": "All three miniature-card faces and backs are byte-identical to the selected sce-base-save variants.",
+    "arkham_fantasy_minicards": "Colored and grayscale pixel-art variants were visually inspected. The pack includes Custom_Tile and Figurine_Custom objects using front/back images, not investigator sculpt meshes. The original portrait style is selected for consistency with displayed cards.",
+    "grayscale_backs": "Available for all three miniature cards, but not selected for ordinary standee rendering. No new rules meaning is assigned to them."
+  },
+  "model_search": {
+    "scope": "Read-only inventory, source-object relationships, model filenames and OBJ geometry. No geometry or textures imported into Git.",
+    "english_model_url_references": 49,
+    "english_unique_obj_payloads": 33,
+    "all_original_obj_payloads": 35,
+    "other_obj_payloads": "French text-tool thin cube and Russian campaign-cover mesh.",
+    "unity_bundle_summary": "Existing catalog records 15 processed bundles. Mesh-bearing entries identify wood/metal table components and Cthulhu decorative geometry; Unity meshes were not decoded.",
+    "finding": "No Tony Morgan, Patrice Hathaway or Jacqueline Fine sculpt or associated UV/material relationship was found among inventoried models. No standalone FBX, GLTF, GLB, DAE or STL files were found. This is bounded archive evidence, not a claim that investigator models cannot exist elsewhere.",
+    "presentation": "Use simple upright 3D geometry for the actual miniature-card portraits rather than import unrelated archive models."
+  }
+}

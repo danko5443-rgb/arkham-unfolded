@@ -1,0 +1,91 @@
+{
+  "purpose": "Fetched evidence for issue #1; identity does not establish source authority or rules correctness",
+  "retrieved_on": "2026-10-27",
+  "local_root": "local/issue-1-evidence",
+  "custody": "Ignored machine-local copies; not distributed in Git or independently backed up. Preserve or reacquire exact matching bytes before dependent fidelity work.",
+  "sources": [
+    {
+      "path": "sources/rules-reference.pdf",
+      "url": "https://cdn.svc.asmodee.net/production-fantasyflightgames/uploads/2026/09/ahc60_rules_reference_eng-compressed.pdf",
+      "sha256": "14823bd23033a857efd78b5c30d2e0fa5eb0cf004675573bf6e8c6698777df4a",
+      "bytes": 6091417
+    },
+    {
+      "path": "sources/night-of-the-zealot.pdf",
+      "url": "https://cdn.svc.asmodee.net/production-fantasyflightgames/uploads/2026/09/night_of_the_zealot_campaign_guide.pdf",
+      "sha256": "132bb78a2c70245d2aa8037bab39784f42431b01c02ffa9d5b44d2edc10e13fb",
+      "bytes": 2436529
+    },
+    {
+      "path": "sources/innsmouth-investigator.pdf",
+      "url": "https://cdn.svc.asmodee.net/production-fantasyflightgames/uploads/2026/09/ahc81_rules_insert.pdf",
+      "sha256": "3df58b1500071a72b1e8f4dd6127f3a181e244b6e1cf8f497c648c70a6238c25",
+      "bytes": 568995
+    },
+    {
+      "path": "sources/faq-2.5.pdf",
+      "url": "https://images-cdn.fantasyflightgames.com/filer_public/c1/d0/c1d0fab6-7fa6-4ce2-af6a-16416381a19b/ahc_faq_v25_february_2026-web.pdf",
+      "sha256": "35c82dc070332acd7863eb6d464641ea79e4657b68ff4f1873538e0bcac6b2e7",
+      "bytes": 1998253
+    },
+    {
+      "path": "sources/grimoire-1.1.pdf",
+      "url": "https://images-cdn.fantasyflightgames.com/filer_public/5c/c7/5cc79eb6-3d9c-4345-a5f1-27051251a6e4/arkham_grimoire_v11_web.pdf",
+      "sha256": "0f932630f49d19fa05e71f34ec0cf1298db0978204bb3be41bda2c67bc1197ed",
+      "bytes": 32558554
+    },
+    {
+      "path": "decks/5392133.json",
+      "url": "https://arkhamdb.com/api/public/deck/5392133.json",
+      "sha256": "f9ef7178cfdcde627f5b58d329727c68d9eb68af018eeeedda73650937682eb0",
+      "bytes": 1868
+    },
+    {
+      "path": "decks/5391062.json",
+      "url": "https://arkhamdb.com/api/public/deck/5391062.json",
+      "sha256": "c037ba26f8eef2fcdce2e2e39777f2f466e68df8bcb48bb09a63cbd2ffdd8c16",
+      "bytes": 1458
+    },
+    {
+      "path": "decks/5389418.json",
+      "url": "https://arkhamdb.com/api/public/deck/5389418.json",
+      "sha256": "adcbbefc2fb29077690595d534e0367e28ff57f69c7d9c29ceb0397d11711f54",
+      "bytes": 2745
+    },
+    {
+      "path": "decks/taboos.json",
+      "url": "https://arkhamdb.com/api/public/taboos/",
+      "sha256": "d63d719bd025040fd74281c123cc692ce521f305e78d5588e7c83eed31801673",
+      "bytes": 87723
+    }
+  ],
+  "inspected_card_faces": {
+    "archive_root": "/home/joeloverbeck/Pictures/Arkham Horror LCG Resources",
+    "catalog_path": "catalog/cards.jsonl",
+    "catalog_sha256": "e89f4caec5d1c9b953cb05610bea5e4348823e12ec255d459b39d37add6a3e41",
+    "scope": "Exact English faces visually inspected for the worked case. Archive classification is not publisher authentication. Rotting Remains has repeated occurrence rows; this identifies one representative row of the inspected image variant. Images remain in the unchanged external archive.",
+    "faces": [
+      {
+        "code": "60401",
+        "catalog_row_id": "de893e191d61798cc7a3c77b8a0307522a34e28532d83600bf65a43a9957867a",
+        "variant_id": "ba5b602644842ee4",
+        "face_path": "images/cards/official/en/sce-base-save/Investigator Packs/60401--Jacqueline Fine/ba5b602644842ee4/face.png",
+        "sha256": "01c1bcf5bbef4356ee2c0224ff8b7ffad87ab1584a53533da53c0857eaa7b3da"
+      },
+      {
+        "code": "07032",
+        "catalog_row_id": "41254b78a01ed5191a757237031aa6562da36dfff24cba2e0b6c3a0e2b0eca8a",
+        "variant_id": "b30f06cacc702078",
+        "face_path": "images/cards/official/en/sce-base-save/The Innsmouth Conspiracy/07032--Promise of Power/b30f06cacc702078/face.png",
+        "sha256": "2ee14826c949db4a6d1e3ebcd4a6dd77638d1e41edb4b87f70419ceff6fce61f"
+      },
+      {
+        "code": "01163",
+        "catalog_row_id": "2fc3a00d4eb10ff49c62ef38277fdbdd6f1e3ccaf3c1527403548c01051a2b73",
+        "variant_id": "c04ee6ea126520d2",
+        "face_path": "images/cards/official/en/night_of_the_zealot/Core/01163--Rotting Remains/c04ee6ea126520d2/face.png",
+        "sha256": "94995549a154435979ef494391b68340c6e4c5b73ba65918942f7382b7adfd82"
+      }
+    ]
+  }
+}
