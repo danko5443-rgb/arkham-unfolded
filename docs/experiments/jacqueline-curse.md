@@ -105,7 +105,19 @@ env XDG_CONFIG_HOME="$review_dir/config" XDG_DATA_HOME="$review_dir/data" \
 native_pid=$!
 ```
 
-Identify visible windows by that PID (`xdotool search --onlyvisible --pid "$native_pid"`), then verify the app's title and geometry before clicking. Title-only searches can also match editor windows. Use a short timeout around focus/capture commands, and stop automation after one failed focus/click attempt plus at most one bounded diagnosis attempt. If the interaction remains unavailable, use the already-agreed owner check within its remaining allowance; report the automation limitation without treating the click as verified.
+Run window discovery, focus, capture, process inspection and cleanup with the same desktop access and process visibility as the launch. Obtain any required tool permission for that context; a missing PID in an isolated shell does not establish that the launched process exited.
+
+Identify visible windows by that PID (`xdotool search --onlyvisible --pid "$native_pid"`), then verify the app's title and geometry. Set `native_window` to the verified numeric window ID. Title-only searches can also match editor windows. Before clicking, capture and inspect a fresh image through the method intended to observe the interaction, checking the target's bounds and scale. The startup screenshot proves application rendering; it does not prove that later desktop captures are available.
+
+After capture, activate the target and require a matching active-window ID immediately before clicking:
+
+```sh
+timeout 5s xdotool windowactivate --sync "$native_window" &&
+  active_window=$(timeout 5s xdotool getactivewindow) &&
+  test "$active_window" = "$native_window"
+```
+
+Proceed with clicks only when capture and focus checks both succeed. Use a short timeout around capture commands too. Stop automation after one failed capture/focus/click attempt plus at most one bounded diagnosis attempt. If the interaction remains unavailable, use the already-agreed owner check within its remaining allowance; report the automation limitation without treating the click as verified.
 
 For folder persistence, exercise **Choose asset folder → check → Save folder → close**. Restart with the same temporary XDG directories and save, omitting both `--art-root` and `--no-art`, and verify that the saved path and asset status are restored. A screenshot establishes the inspected rendering; the actual interaction and restart establish their separate behavior. Any review of the owner's real preference uses its explicitly agreed scope instead of these diagnostic settings.
 
