@@ -15,7 +15,7 @@ cd /home/joeloverbeck/src/arkham-unfolded
 cargo run --locked --features tabletop --bin arkham-tabletop
 ```
 
-The window is titled **Arkham Unfolded — Scripted Rules Experiment**. For development verification, run `cargo test --locked --features tabletop` from the same directory; tests are not a prerequisite to playing.
+The window is titled **Arkham Unfolded — Scripted Rules Experiment**. For development verification, run `scripts/check` from the same directory; checks are not a prerequisite to playing. For native rendering or interaction changes, also follow [developer native verification](#developer-native-verification).
 
 For the other prepared case or a deliberate artwork-absence check:
 
@@ -75,3 +75,38 @@ Runtime saves, recordings and screenshots belong under ignored `local/experiment
 The preceding valid save is retained as `<save-path>.previous`. An explicit new example also archives the prior run to a unique sibling file. To recover, reopen a valid retained file with `--load`; do not edit or overwrite a corrupt original to make it parse. Recording exports are immutable and named by their content; an attempt to replace one with a different match is refused. This experiment verifies ordinary close/reopen and refusal behavior, not power-loss durability or long-term cross-version migration.
 
 Passing automated checks establishes the exercised decisions and continuity boundaries only. Native rendering evidence establishes only the inspected session. Human acceptance of playing and narrating remains separate; the current review allowance and any explicitly selected extensions are recorded on #2. Full campaign branches, other token-replacement cards, unrestricted random play and recurrent usefulness remain unproven. At the 12-active-agent-hour bound, or if the governing assumptions fail, return the evidence to #2 without activating more work.
+
+## Developer native verification
+
+Use a separate save and temporary settings for diagnostics. From the repository root in a working Ubuntu graphics session, build first, then capture the actual app window with its existing screenshot options:
+
+```sh
+cargo build --locked --features tabletop --bin arkham-tabletop
+review_dir=$(mktemp -d /tmp/arkham-native.XXXXXX)
+mkdir -p "$review_dir/config" "$review_dir/data"
+env XDG_CONFIG_HOME="$review_dir/config" XDG_DATA_HOME="$review_dir/data" \
+  timeout --kill-after=5s 45s target/debug/arkham-tabletop \
+  --save "$review_dir/review.session.json" --no-art \
+  --screenshot "$review_dir/tabletop.png" --quit-after-screenshot \
+  >"$review_dir/app.log" 2>&1
+capture_status=$?
+printf 'Capture exit: %s; evidence: %s\n' "$capture_status" "$review_dir"
+test "$capture_status" -eq 0 && test -s "$review_dir/tabletop.png"
+```
+
+Inspect both `app.log` and the image. A timeout or missing image is a failed capture; retain the log for diagnosis. The example checks readable substitutes. For real artwork, replace `--no-art` with `--art-root /absolute/path/to/prepared-assets` and confirm the reported completeness. To inspect an existing save, first copy it into the new review directory and replace `--save` with `--load` pointing to that copy: the loaded path also becomes the autosave destination. Keep original saves, replays and settings untouched.
+
+For an interaction check, reuse these temporary directories and launch the binary directly so the background PID belongs to the app:
+
+```sh
+env XDG_CONFIG_HOME="$review_dir/config" XDG_DATA_HOME="$review_dir/data" \
+  target/debug/arkham-tabletop --save "$review_dir/review.session.json" \
+  >"$review_dir/interaction.log" 2>&1 &
+native_pid=$!
+```
+
+Identify visible windows by that PID (`xdotool search --onlyvisible --pid "$native_pid"`), then verify the app's title and geometry before clicking. Title-only searches can also match editor windows. Use a short timeout around focus/capture commands, and stop automation after one failed focus/click attempt plus at most one bounded diagnosis attempt. If the interaction remains unavailable, use the already-agreed owner check within its remaining allowance; report the automation limitation without treating the click as verified.
+
+For folder persistence, exercise **Choose asset folder → check → Save folder → close**. Restart with the same temporary XDG directories and save, omitting both `--art-root` and `--no-art`, and verify that the saved path and asset status are restored. A screenshot establishes the inspected rendering; the actual interaction and restart establish their separate behavior. Any review of the owner's real preference uses its explicitly agreed scope instead of these diagnostic settings.
+
+Close the verification window normally and reap it with `wait "$native_pid"`. If cleanup is needed, confirm the recorded PID still belongs to this launch before terminating it, and stop only that launch and identified helper processes. Keep logs/captures local; record the revision, command, outcome and evidence location in the active issue. Remove temporary files only after the needed evidence has been retained.
