@@ -2,7 +2,7 @@
 
 An English-language Arkham Horror: The Card Game application for Ubuntu, planned with a Rust rules core and an animated 3D tabletop.
 
-**Status: repository foundations. There is no playable application yet.** The initial work establishes the source and verification contract before implementing the game.
+**Status: one bounded, scripted Rust/3D experiment. The campaign is not playable yet.** The source assessment led to a selected Jacqueline/Patrice skill-test experiment; its implementation remains separate from acceptance of the full game.
 
 The aim is to let one player control their investigators while the program handles setup, legal actions, timing, card effects, tokens, movement, and campaign bookkeeping. Cards, decks, and tokens should retain the physical presence of a tabletop game. Rules explanations will be available through an inspectable action history.
 
@@ -25,14 +25,15 @@ Content support follows the owner's actual use. Starting decks, campaign content
 - [Mission and scope](docs/foundation/mission.md)
 - [Play contract](docs/foundation/play-contract.md)
 - [Sources and verification](docs/foundation/sources-and-verification.md)
-- [Issue #1 feasibility assessment](docs/research/issue-1-assessment.md) — candidate sources, evidence and a proposed first experiment; awaiting owner disposition
+- [Issue #1 feasibility assessment](docs/research/issue-1-assessment.md) — accepted source baseline and evidence for the selected bounded experiment
+- [Run the selected skill-test experiment](docs/experiments/jacqueline-curse.md) — native tabletop, player-equivalent driver, save/reopen and recorded replay under [issue #2](https://github.com/joeloverbeck/arkham-unfolded/issues/2)
 - [Repository principles](docs/principles/principles-for-repos.md)
 
 [GitHub Issues](https://github.com/joeloverbeck/arkham-unfolded/issues) and pull requests are the work-control plane. Foundations record the intended product and accepted decisions; they are not a second work queue. `CLAUDE.md` contains the agent bootstrap; both `AGENTS.md` and `AGENT.md` link to it.
 
 ## Current use and external inputs
 
-There is no build, installation, or launch command at this stage. A clean clone contains the foundations and requires no artwork or credentials to read them. Gameplay implementation is not yet ready to activate.
+The experiment requires Rust 1.97.1 or later. Run its automated checks with `cargo test --locked`; launch the native tabletop with `cargo run --locked --features tabletop --bin arkham-tabletop`. The first build downloads dependencies; the built experiment runs offline. A clean clone needs no artwork or credentials for the checks or readable tabletop substitutes. See the experiment guide for controls, external inputs, records and evidence limits.
 
 The future application will read a separately configured resource archive. Card images and token textures are not included in Git. Gameplay must remain usable with readable English substitutes when artwork is absent; absent or unsupported rules behavior must be identified before play. See the source contract for the archive layout and source identities.
 
