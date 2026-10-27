@@ -25,6 +25,7 @@ Content support follows the owner's actual use. Starting decks, campaign content
 - [Mission and scope](docs/foundation/mission.md)
 - [Play contract](docs/foundation/play-contract.md)
 - [Sources and verification](docs/foundation/sources-and-verification.md)
+- [Issue #1 feasibility assessment](docs/research/issue-1-assessment.md) — candidate sources, evidence and a proposed first experiment; awaiting owner disposition
 - [Repository principles](docs/principles/principles-for-repos.md)
 
 [GitHub Issues](https://github.com/joeloverbeck/arkham-unfolded/issues) and pull requests are the work-control plane. Foundations record the intended product and accepted decisions; they are not a second work queue. `CLAUDE.md` contains the agent bootstrap; both `AGENTS.md` and `AGENT.md` link to it.
