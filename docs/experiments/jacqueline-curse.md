@@ -6,12 +6,16 @@ The task is to decide whether Patrice commits Promise of Power, decide when Jacq
 
 ## Build and run
 
-Requires Rust/Cargo 1.97.1 or later and a working Ubuntu X11/XWayland graphics session with Vulkan support. The lockfile pins the experiment's dependencies, including Bevy 0.20.0. First dependency acquisition/build requires network access; the resulting application, saving and replay run offline.
+Start with the [README launch walkthrough](../../README.md#launch-and-play-the-current-experiment) for the first clicks and basic controls. Requires Rust/Cargo 1.97.1 or later and a working Ubuntu X11/XWayland graphics session with Vulkan support. The lockfile pins the experiment's dependencies, including Bevy 0.20.0. First dependency acquisition/build requires network access and can take several minutes; the resulting application, saving and replay run offline.
+
+Open Terminal (`Ctrl` + `Alt` + `T`), then run the following. Replace the checkout directory if yours is elsewhere. Keep the terminal open while the native window is running.
 
 ```sh
-cargo test --locked
+cd /home/joeloverbeck/src/arkham-unfolded
 cargo run --locked --features tabletop --bin arkham-tabletop
 ```
+
+The window is titled **Arkham Unfolded — Scripted Rules Experiment**. For development verification, run `cargo test --locked --features tabletop` from the same directory; tests are not a prerequisite to playing.
 
 For the other prepared case or a deliberate artwork-absence check:
 
@@ -60,4 +64,4 @@ Runtime saves, recordings and screenshots belong under ignored `local/experiment
 
 The preceding valid save is retained as `<save-path>.previous`. An explicit new example also archives the prior run to a unique sibling file. To recover, reopen a valid retained file with `--load`; do not edit or overwrite a corrupt original to make it parse. Recording exports are immutable and named by their content; an attempt to replace one with a different match is refused. This experiment verifies ordinary close/reopen and refusal behavior, not power-loss durability or long-term cross-version migration.
 
-Passing automated checks establishes the exercised decisions and continuity boundaries only. Native rendering evidence establishes only the inspected session. Human acceptance of playing and narrating remains separate, capped at two sessions of at most 20 minutes each, including retries. Full campaign branches, other token-replacement cards, unrestricted random play and recurrent usefulness remain unproven. At the 12-active-agent-hour bound, or if the governing assumptions fail, return the evidence to #2 without activating more work.
+Passing automated checks establishes the exercised decisions and continuity boundaries only. Native rendering evidence establishes only the inspected session. Human acceptance of playing and narrating remains separate; the current review allowance and any explicitly selected extensions are recorded on #2. Full campaign branches, other token-replacement cards, unrestricted random play and recurrent usefulness remain unproven. At the 12-active-agent-hour bound, or if the governing assumptions fail, return the evidence to #2 without activating more work.

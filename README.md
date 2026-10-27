@@ -4,6 +4,31 @@ An English-language Arkham Horror: The Card Game application for Ubuntu, planned
 
 **Status: one bounded, scripted Rust/3D experiment. The campaign is not playable yet.** The source assessment led to a selected Jacqueline/Patrice skill-test experiment; its implementation remains separate from acceptance of the full game.
 
+## Launch and play the current experiment
+
+On this Ubuntu machine, open **Terminal** (`Ctrl` + `Alt` + `T`) and paste:
+
+```sh
+cd /home/joeloverbeck/src/arkham-unfolded
+cargo run --locked --features tabletop --bin arkham-tabletop
+```
+
+If your checkout is elsewhere, replace the directory in the first line. This requires Rust/Cargo 1.97.1 or later and an Ubuntu graphics session with X11/XWayland and Vulkan. The first launch downloads and compiles dependencies, which can take several minutes. Later launches reuse the build. Keep the terminal open while playing; the native window is titled **Arkham Unfolded — Scripted Rules Experiment**.
+
+In a fresh case:
+
+1. Click **Commit Promise of Power**, then **Use Jacqueline: reveal 3, then choose cancellations**.
+2. Choose which tokens to cancel. The centered result window explains the outcome; click **Return to table** to continue.
+3. Click **Open recorded replay**. Use **Next moment** and **Previous moment** to step through it. Those buttons appear only when another moment exists in that direction.
+
+Click any card to inspect its text. Right-drag or use the arrow keys to orbit the camera; the wheel or `+`/`-` zooms, and `Home` resets it. Moving the camera manually overrides replay's automatic following.
+
+**Close and resume:** decisions autosave to `local/experiment/curse.session.json`. Close the window and run the same command to resume. Before any decision, use **Save live session** if you want to retain that initial state. If a completed result opens on launch, click **Return to table**, then **Start another example** for a fresh run; the previous run is archived. From an unfinished case, **End this experiment** makes that restart control available.
+
+The supplied card and token artwork loads from the external archive when available. Missing artwork uses readable substitutes. See the [experiment guide](docs/experiments/jacqueline-curse.md) for the alternate case, selecting a different save or artwork folder, and recovery instructions.
+
+## Project aim
+
 The aim is to let one player control their investigators while the program handles setup, legal actions, timing, card effects, tokens, movement, and campaign bookkeeping. Cards, decks, and tokens should retain the physical presence of a tabletop game. Rules explanations will be available through an inspectable action history.
 
 ## First complete delivery
@@ -33,7 +58,7 @@ Content support follows the owner's actual use. Starting decks, campaign content
 
 ## Current use and external inputs
 
-The experiment requires Rust 1.97.1 or later. Run its automated checks with `cargo test --locked`; launch the native tabletop with `cargo run --locked --features tabletop --bin arkham-tabletop`. The first build downloads dependencies; the built experiment runs offline. A clean clone needs no artwork or credentials for the checks or readable tabletop substitutes. See the experiment guide for controls, external inputs, records and evidence limits.
+The built experiment runs offline. A clean clone needs no artwork or credentials for the checks or readable tabletop substitutes. Run the rules and continuity checks with `cargo test --locked`, or include the tabletop checks with `cargo test --locked --features tabletop`. See the experiment guide for external inputs, records and evidence limits.
 
 The future application will read a separately configured resource archive. Card images and token textures are not included in Git. Gameplay must remain usable with readable English substitutes when artwork is absent; absent or unsupported rules behavior must be identified before play. See the source contract for the archive layout and source identities.
 
