@@ -1,6 +1,6 @@
 # Arkham Unfolded
 
-Read `docs/foundation/mission.md`, `docs/foundation/play-contract.md`, and `docs/foundation/sources-and-verification.md` before selecting project work. GitHub Issues and pull requests own active work. The repository is currently at the foundation stage; source reconciliation and feasibility precede gameplay implementation.
+Read `docs/foundation/mission.md`, `docs/foundation/play-contract.md`, and `docs/foundation/sources-and-verification.md` before selecting project work. GitHub Issues and pull requests own active work. Consult `README.md` for implemented status and launch instructions.
 
 <!-- BEGIN PRINCIPLES-FOR-REPOS BOOTSTRAP 2026-09-30.1 -->
 ## Repository constitution
