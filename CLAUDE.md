@@ -53,3 +53,17 @@ The owner is `joeloverbeck`. This is one English-only, personal-use Arkham Horro
 The first complete delivery is the original Night of the Zealot campaign on Standard with the three named investigator decks and the content actually selected for their campaign. Consult the play contract for decisions about upgrades, weaknesses, taboo versions, recording, replay, controls, and asset absence.
 
 Card and token artwork, the external resource archive, credentials, local configuration, personal saves, and recordings are outside this repository. Consult the source contract before importing or referencing external material.
+
+## Agent skills
+
+### Issue tracker
+
+Use GitHub Issues and pull requests in `joeloverbeck/arkham-unfolded`. Read `docs/agents/issue-tracker.md` before working with issues or specs.
+
+### Triage labels
+
+Use the five default triage labels. Read `docs/agents/triage-labels.md` before triaging or changing readiness labels.
+
+### Domain docs
+
+Use a single-context layout: root `GLOSSARY.md` and `docs/adr/`. Read `docs/agents/domain.md` before exploring domain terminology or architectural decisions.
