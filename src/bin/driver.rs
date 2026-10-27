@@ -1,4 +1,4 @@
-use arkham_unfolded_experiment::continuity::{Replay, load_session, save_session};
+use arkham_unfolded_experiment::continuity::{Replay, commit_choice, load_session, save_session};
 use arkham_unfolded_experiment::{Fixture, Session};
 use serde::Deserialize;
 use serde_json::{Value, json};
@@ -140,21 +140,12 @@ fn run() -> Result<(), String> {
                     emit(&mut output, &response(&game, replay.as_ref(), "refused", Some("Replay cannot change the match. Use live to return to the current decision.".into())))?;
                     continue;
                 }
-                let mut candidate = game.clone();
-                let result = candidate
-                    .choose(revision, &id)
-                    .map_err(|error| error.to_string())
-                    .and_then(|()| {
-                        save_session(&options.save, &candidate).map_err(|error| error.to_string())
-                    });
-                match result {
-                    Ok(()) => {
-                        game = candidate;
-                        emit(&mut output, &response(&game, None, "chosen", None))?;
-                    }
-                    Err(error) => {
-                        emit(&mut output, &response(&game, None, "refused", Some(error)))?
-                    }
+                match commit_choice(&options.save, &mut game, revision, &id) {
+                    Ok(()) => emit(&mut output, &response(&game, None, "chosen", None))?,
+                    Err(error) => emit(
+                        &mut output,
+                        &response(&game, None, "refused", Some(error.to_string())),
+                    )?,
                 }
             }
             Request::Save {} => {

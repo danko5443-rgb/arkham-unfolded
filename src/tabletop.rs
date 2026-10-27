@@ -584,18 +584,11 @@ fn handle_actions(
         }
         match action {
             Action::Choose(revision, id) if table.replay.is_none() => {
-                let mut candidate = table.session.clone();
-                let result = candidate
-                    .choose(revision, &id)
-                    .map_err(|e| e.to_string())
-                    .and_then(|()| {
-                        continuity::save_session(&table.save_path, &candidate)
-                            .map_err(|e| e.to_string())
-                    });
-                match result {
+                let table = &mut *table;
+                match continuity::commit_choice(&table.save_path, &mut table.session, revision, &id)
+                {
                     Ok(()) => {
-                        table.result_open = candidate.observe().stage == Stage::Finished;
-                        table.session = candidate;
+                        table.result_open = table.session.observe().stage == Stage::Finished;
                         table.notice = "Decision saved. You can close and reopen safely.".into();
                     }
                     Err(error) => table.notice = format!("Decision was not committed: {error}"),

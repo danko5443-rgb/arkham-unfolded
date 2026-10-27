@@ -1,5 +1,6 @@
 use arkham_unfolded_experiment::continuity::{
-    Replay, load_recording, load_session, restart_session, save_recording, save_session,
+    Replay, commit_choice, load_recording, load_session, restart_session, save_recording,
+    save_session,
 };
 use arkham_unfolded_experiment::{Fixture, Session, Stage, TokenFace};
 
@@ -8,6 +9,142 @@ fn awaiting_cancellation() -> Session {
     game.choose(0, "commit-promise").unwrap();
     game.choose(1, "use-jacqueline").unwrap();
     game
+}
+
+#[test]
+fn committing_a_choice_installs_the_complete_saved_session() {
+    let directory = tempfile::tempdir().unwrap();
+    let path = directory.path().join("session.json");
+    let mut game = awaiting_cancellation();
+    let before = game.recording();
+
+    commit_choice(&path, &mut game, 2, "cancel-1-2").unwrap();
+
+    assert_eq!(game.observe().revision, 3);
+    assert_eq!(game.observe().stage, Stage::Finished);
+    assert_eq!(game.recording().moments.len(), 4);
+    assert!(game.recording().moments.starts_with(&before.moments));
+    let reopened = load_session(&path).unwrap();
+    assert_eq!(reopened, game);
+    assert_eq!(reopened.observe(), game.observe());
+    assert_eq!(reopened.recording(), game.recording());
+}
+
+#[test]
+fn refused_choices_preserve_the_entire_session_without_attempting_persistence() {
+    let directory = tempfile::tempdir().unwrap();
+    let parent = directory.path().join("not-created");
+    let path = parent.join("session.json");
+    let mut game = awaiting_cancellation();
+    let before = game.clone();
+
+    for (revision, id, message) in [
+        (
+            2,
+            "invent-token",
+            "That choice is not legal at this decision.",
+        ),
+        (
+            1,
+            "cancel-1-2",
+            "This choice is stale. Observe the current decision.",
+        ),
+    ] {
+        let error = commit_choice(&path, &mut game, revision, id).unwrap_err();
+        assert_eq!(error.to_string(), message);
+        assert_eq!(game, before);
+        assert!(
+            !parent.exists(),
+            "rule refusal must precede filesystem writes"
+        );
+    }
+}
+
+#[test]
+fn a_blocked_destination_preserves_the_entire_session_and_existing_contents() {
+    let directory = tempfile::tempdir().unwrap();
+    let path = directory.path().join("session.json");
+    std::fs::create_dir(&path).unwrap();
+    let protected = path.join("retain.txt");
+    std::fs::write(&protected, b"retain these bytes").unwrap();
+    let mut game = awaiting_cancellation();
+    let before = game.clone();
+
+    let error = commit_choice(&path, &mut game, 2, "cancel-1-2").unwrap_err();
+
+    assert_eq!(
+        error.to_string(),
+        "The record destination is not a regular file."
+    );
+    assert_eq!(game, before);
+    assert_eq!(std::fs::read(&protected).unwrap(), b"retain these bytes");
+    assert!(!directory.path().join("session.json.previous").exists());
+}
+
+#[test]
+fn a_damaged_record_refuses_the_choice_and_preserves_the_session_and_recovery() {
+    let directory = tempfile::tempdir().unwrap();
+    let path = directory.path().join("session.json");
+    let previous = directory.path().join("session.json.previous");
+    let mut game = awaiting_cancellation();
+    let before = game.clone();
+    save_session(&previous, &game).unwrap();
+    let recovery = std::fs::read(&previous).unwrap();
+    std::fs::write(&path, b"damaged save").unwrap();
+
+    let error = commit_choice(&path, &mut game, 2, "cancel-1-2").unwrap_err();
+
+    assert!(error.to_string().starts_with("Invalid record:"));
+    assert_eq!(game, before);
+    assert_eq!(std::fs::read(&path).unwrap(), b"damaged save");
+    assert_eq!(std::fs::read(&previous).unwrap(), recovery);
+}
+
+#[test]
+fn a_conflicting_saved_successor_refuses_the_choice_without_changing_live_or_saved_state() {
+    let directory = tempfile::tempdir().unwrap();
+    let path = directory.path().join("session.json");
+    let previous = directory.path().join("session.json.previous");
+    let mut game = Session::new(Fixture::curse());
+    let before = game.clone();
+    save_session(&path, &game).unwrap();
+    let mut committed = game.clone();
+    committed.choose(0, "commit-promise").unwrap();
+    save_session(&path, &committed).unwrap();
+    let saved = std::fs::read(&path).unwrap();
+    let recovery = std::fs::read(&previous).unwrap();
+
+    let error = commit_choice(&path, &mut game, 0, "decline-promise").unwrap_err();
+
+    assert_eq!(
+        error.to_string(),
+        "A different or later decision is already saved. Reopen it before continuing."
+    );
+    assert_eq!(game, before);
+    assert_eq!(std::fs::read(&path).unwrap(), saved);
+    assert_eq!(std::fs::read(&previous).unwrap(), recovery);
+    assert_eq!(load_session(&path).unwrap(), committed);
+}
+
+#[test]
+fn an_identical_saved_successor_installs_live_without_rewriting_or_rotating_recovery() {
+    let directory = tempfile::tempdir().unwrap();
+    let path = directory.path().join("session.json");
+    let previous = directory.path().join("session.json.previous");
+    let mut game = Session::new(Fixture::curse());
+    save_session(&path, &game).unwrap();
+    let mut committed = game.clone();
+    committed.choose(0, "commit-promise").unwrap();
+    save_session(&path, &committed).unwrap();
+    let saved = std::fs::read(&path).unwrap();
+    let recovery = std::fs::read(&previous).unwrap();
+
+    commit_choice(&path, &mut game, 0, "commit-promise").unwrap();
+
+    assert_eq!(game, committed);
+    assert_eq!(load_session(&path).unwrap(), game);
+    assert_eq!(std::fs::read(&path).unwrap(), saved);
+    assert_eq!(std::fs::read(&previous).unwrap(), recovery);
 }
 
 #[test]
