@@ -3,6 +3,8 @@
 
 use crate::{
     Fixture, Observation, Session, Stage, TokenFace, TokenStatus,
+    asset_config::AssetConfig,
+    assets::{self, CollectionReport},
     continuity::{self, Replay},
 };
 use bevy::{
@@ -17,9 +19,11 @@ use bevy::{
 use sha2::{Digest, Sha256};
 use std::path::{Path, PathBuf};
 
+mod asset_settings;
 mod inspection;
 mod standees;
 mod symbols;
+use asset_settings::AssetSettings;
 use symbols::Symbol;
 
 const PANEL: f32 = 390.0;
@@ -29,7 +33,6 @@ const MUTED: Color = Color::srgb(0.62, 0.71, 0.70);
 const GOLD: Color = Color::srgb(0.86, 0.69, 0.37);
 const TEAL: Color = Color::srgb(0.13, 0.37, 0.36);
 const BUTTON: Color = Color::srgb(0.12, 0.19, 0.21);
-const ARCHIVE: &str = "/home/joeloverbeck/Pictures/Arkham Horror LCG Resources";
 
 struct Card {
     code: &'static str,
@@ -104,6 +107,7 @@ enum Action {
     Follow,
     ShowResult,
     DismissResult,
+    AssetFolder,
 }
 
 #[derive(Resource, Default)]
@@ -142,18 +146,7 @@ struct Art {
     reminder: Option<Handle<Image>>,
     investigators: Vec<(String, Handle<Image>)>,
     symbol_font: Option<Handle<Font>>,
-}
-
-#[derive(serde::Deserialize)]
-struct TokenArtManifest {
-    faces: Vec<TokenArtFace>,
-}
-
-#[derive(serde::Deserialize)]
-struct TokenArtFace {
-    semantic_face: TokenFace,
-    path: String,
-    sha256: String,
+    status: String,
 }
 
 #[derive(Resource)]
@@ -187,17 +180,20 @@ struct Options {
     save: PathBuf,
     load: Option<PathBuf>,
     art_root: Option<PathBuf>,
+    config: AssetConfig,
     screenshot: Option<PathBuf>,
     quit_after_screenshot: bool,
 }
 
 impl Options {
     fn parse() -> Result<Option<Self>, String> {
+        let config = AssetConfig::load()?;
         let mut options = Self {
             fixture: Fixture::curse(),
             save: "local/experiment/curse.session.json".into(),
             load: None,
-            art_root: Some(ARCHIVE.into()),
+            art_root: Some(config.root().to_path_buf()),
+            config,
             screenshot: None,
             quit_after_screenshot: false,
         };
@@ -231,7 +227,7 @@ impl Options {
                 "--quit-after-screenshot" => options.quit_after_screenshot = true,
                 "--help" | "-h" => {
                     println!(
-                        "Arkham Unfolded — scripted rules experiment\n\n--case curse|autofail  Choose the privileged starting fixture\n--save PATH            Session save and autosave path\n--load PATH            Reopen a saved pending decision\n--art-root PATH        Read the external artwork archive\n--no-art               Use readable substitutes\n--screenshot PATH      Capture the actual window once ready\n--quit-after-screenshot\n\nCamera: right drag or arrow keys; wheel or +/- to zoom; Home to reset. F12 saves a screenshot."
+                        "Arkham Unfolded — scripted rules experiment\n\n--case curse|autofail  Choose the privileged starting fixture\n--save PATH            Session save and autosave path\n--load PATH            Reopen a saved pending decision\n--art-root PATH        Use a prepared asset collection for this launch\n--no-art               Use readable substitutes\n--screenshot PATH      Capture the actual window once ready\n--quit-after-screenshot\n\nCamera: right drag or arrow keys; wheel or +/- to zoom; Home to reset. F12 saves a screenshot."
                     );
                     return Ok(None);
                 }
@@ -263,7 +259,33 @@ pub fn run() -> Result<(), String> {
         Session::new(options.fixture.clone())
     };
     let save_path = load_path.unwrap_or(options.save);
-    let art_root = options.art_root;
+    let art_root = options.art_root.map(|path| {
+        if path.is_absolute() {
+            path
+        } else {
+            std::env::current_dir()
+                .unwrap_or_else(|_| PathBuf::from("."))
+                .join(path)
+        }
+    });
+    let collection = art_root.as_deref().map(assets::inspect);
+    let status = collection.as_ref().map_or_else(
+        || "Artwork disabled for this launch; readable substitutes are active.".into(),
+        CollectionReport::summary,
+    );
+    eprintln!("{status}");
+    if let Some(report) = &collection {
+        for diagnostic in &report.diagnostics {
+            eprintln!("{diagnostic}");
+        }
+    }
+    let notice = if let Some(warning) = options.config.warning() {
+        format!("Asset settings: {warning}")
+    } else if resumed {
+        "Saved experiment reopened at its exact pending decision.".into()
+    } else {
+        "Choose freely. The rules handle the consequences.".into()
+    };
     let asset_root = art_root.as_ref().map_or_else(
         || "local/experiment/absent-art".to_string(),
         |p| p.to_string_lossy().into_owned(),
@@ -276,18 +298,14 @@ pub fn run() -> Result<(), String> {
             session,
             replay: None,
             save_path,
-            notice: if resumed {
-                "Saved experiment reopened at its exact pending decision."
-            } else {
-                "Choose freely. The rules handle the consequences."
-            }
-            .into(),
+            notice,
             inspect: None,
             history: false,
             dirty: true,
         })
         .insert_resource(Orbit::default())
         .insert_resource(Actions::default())
+        .insert_resource(AssetSettings::new(options.config))
         .insert_resource(Capture {
             path: options.screenshot,
             quit: options.quit_after_screenshot,
@@ -315,6 +333,7 @@ pub fn run() -> Result<(), String> {
             Update,
             (
                 mark_window_resized,
+                poll_asset_settings,
                 handle_actions,
                 camera_controls,
                 rebuild_view,
@@ -326,24 +345,43 @@ pub fn run() -> Result<(), String> {
             )
                 .chain(),
         );
-    let handles = load_art(app.world().resource::<AssetServer>(), art_root.as_deref());
-    let available = handles.iter().filter(|h| h.is_some()).count();
-    let token_handles = load_token_art(app.world().resource::<AssetServer>(), art_root.as_deref());
-    let reminder = art_root.as_deref().and_then(|root| {
-        let manifest: serde_json::Value =
-            serde_json::from_str(include_str!("../docs/experiments/token-art.json"))
-                .expect("valid art manifest");
-        let face = &manifest["reaction_reminder"];
-        verified_image(
-            app.world().resource::<AssetServer>(),
-            root,
-            face["path"].as_str()?,
-            face["sha256"].as_str()?,
+    let server = app.world().resource::<AssetServer>();
+    let handles = std::array::from_fn(|i| {
+        prepared_image(
+            server,
+            collection.as_ref(),
+            &format!("card/{}", CARDS[i].code),
         )
     });
-    let investigators = standees::load(app.world().resource::<AssetServer>(), art_root.as_deref());
+    let available = handles.iter().filter(|h| h.is_some()).count();
+    let token_handles = [
+        (TokenFace::Curse, "curse"),
+        (TokenFace::MinusOne, "minus_one"),
+        (TokenFace::Zero, "zero"),
+        (TokenFace::MinusTwo, "minus_two"),
+        (TokenFace::AutoFail, "auto_fail"),
+    ]
+    .into_iter()
+    .filter_map(|(face, name)| {
+        prepared_image(server, collection.as_ref(), &format!("token/{name}"))
+            .map(|handle| (face, handle))
+    })
+    .collect();
+    let reminder = prepared_image(server, collection.as_ref(), "marker/reaction");
+    let investigators = [
+        ("Tony Morgan", "06003"),
+        ("Patrice Hathaway", "06005"),
+        ("Jacqueline Fine", "60401"),
+    ]
+    .into_iter()
+    .filter_map(|(name, code)| {
+        prepared_image(server, collection.as_ref(), &format!("standee/{code}"))
+            .map(|handle| (name.to_owned(), handle))
+    })
+    .collect();
     let symbol_font = symbols::load(
         art_root.as_deref(),
+        collection.as_ref(),
         &mut app.world_mut().resource_mut::<Assets<Font>>(),
     );
     app.insert_resource(Art {
@@ -353,53 +391,30 @@ pub fn run() -> Result<(), String> {
         reminder,
         investigators,
         symbol_font,
+        status,
     });
     app.run();
     Ok(())
 }
 
-fn load_art(server: &AssetServer, root: Option<&Path>) -> [Option<Handle<Image>>; 3] {
-    let evidence: serde_json::Value =
-        serde_json::from_str(include_str!("../docs/research/issue-1-evidence.json"))
-            .expect("the committed evidence manifest is valid JSON");
-    std::array::from_fn(|i| {
-        let root = root?;
-        let face = evidence["inspected_card_faces"]["faces"]
-            .as_array()?
-            .iter()
-            .find(|face| face["code"].as_str() == Some(CARDS[i].code))?;
-        let path = face["face_path"].as_str()?;
-        verified_image(server, root, path, face["sha256"].as_str()?)
-    })
-}
-
-fn load_token_art(server: &AssetServer, root: Option<&Path>) -> Vec<(TokenFace, Handle<Image>)> {
-    let Some(root) = root else { return Vec::new() };
-    let manifest: TokenArtManifest =
-        serde_json::from_str(include_str!("../docs/experiments/token-art.json"))
-            .expect("the committed token art manifest is valid JSON");
-    manifest
-        .faces
-        .into_iter()
-        .filter_map(|face| {
-            verified_image(server, root, &face.path, &face.sha256)
-                .map(|image| (face.semantic_face, image))
-        })
-        .collect()
-}
-
-fn verified_image(
+fn prepared_image(
     server: &AssetServer,
-    root: &Path,
-    path: &str,
-    sha256: &str,
+    collection: Option<&CollectionReport>,
+    role: &str,
 ) -> Option<Handle<Image>> {
-    let bytes = std::fs::read(root.join(path)).ok()?;
-    // A changed or missing image is a presentation substitute, never a rules block.
-    if format!("{:x}", Sha256::digest(&bytes)) != sha256 {
-        return None;
+    Some(server.load(collection?.verified_path(role)?.to_owned()))
+}
+
+fn poll_asset_settings(mut settings: ResMut<AssetSettings>, mut table: ResMut<Tabletop>) {
+    if let Some(notice) = settings.poll() {
+        eprintln!("{notice}");
+        eprintln!(
+            "Configured asset folder: {}",
+            settings.configured_root().display()
+        );
+        table.notice = notice;
+        table.dirty = true;
     }
-    Some(server.load(path.to_owned()))
 }
 
 fn setup_scene(
@@ -555,8 +570,12 @@ fn handle_actions(
     mut queue: ResMut<Actions>,
     mut table: ResMut<Tabletop>,
     mut orbit: ResMut<Orbit>,
+    mut settings: Option<ResMut<AssetSettings>>,
 ) {
     for action in queue.0.drain(..) {
+        if settings.as_ref().is_some_and(|settings| settings.is_busy()) {
+            continue;
+        }
         // A modal consumes interaction with the underlying table, including queued clicks.
         if (table.result_open && !matches!(action, Action::DismissResult))
             || (table.inspect.is_some() && !matches!(action, Action::CloseInspect))
@@ -683,6 +702,12 @@ fn handle_actions(
             }
             Action::ShowResult => table.result_open = table.view().stage == Stage::Finished,
             Action::DismissResult => table.result_open = false,
+            Action::AssetFolder => {
+                if let Some(settings) = &mut settings {
+                    settings.choose();
+                    table.notice = "Choose a prepared asset folder in the file dialog. The current game stays unchanged.".into();
+                }
+            }
             Action::Choose(_, _) => {}
         }
         if !orbit.follow {
@@ -729,8 +754,11 @@ fn camera_controls(
     time: Res<Time>,
     mut orbit: ResMut<Orbit>,
     mut camera: Single<&mut Transform, With<MainCamera>>,
+    settings: Option<Res<AssetSettings>>,
 ) {
-    let modal_open = table.result_open || table.inspect.is_some();
+    let modal_open = table.result_open
+        || table.inspect.is_some()
+        || settings.as_ref().is_some_and(|settings| settings.is_busy());
     let scene_pointer = !modal_open
         && !table.history
         && window
@@ -1326,6 +1354,8 @@ fn rebuild_view(
                     false,
                 );
             }
+            button(parent, "Choose asset folder", Action::AssetFolder, false);
+            parent.spawn(text(&art.status, 12.0, MUTED));
             parent.spawn(text(
                 if art.available == 3 {
                     "Original card faces available. Click any card to inspect."
@@ -1653,6 +1683,7 @@ mod result_modal_tests {
                 reminder: None,
                 investigators: Vec::new(),
                 symbol_font: None,
+                status: "Readable substitutes are active.".into(),
             })
             .add_systems(
                 Update,
@@ -1800,6 +1831,7 @@ mod result_modal_tests {
                 reminder: None,
                 investigators: Vec::new(),
                 symbol_font: None,
+                status: "Readable substitutes are active.".into(),
             })
             .add_systems(Update, rebuild_view.after(handle_actions));
         let reminder = app

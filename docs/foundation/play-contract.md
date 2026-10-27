@@ -44,10 +44,14 @@ Save/load is required. Gameplay, saving, loading and replay work offline after t
 
 Autosave each committed player-decision boundary and permit a manual save at a pending decision, including during a skill test. Loading restores the exact pending choice, state and randomness without rerolling or repeating committed effects. Presentation interrupted by saving must not alter rules state. Records identify the required game data and application/rules version. Updates must preserve original records and an explicit way to resume or replay them, through a compatible version or a verified migration. The compatibility approach needs assessment before implementation; this does not promise that every future build can directly open every historical format.
 
-## Missing artwork
+## Presentation assets and missing artwork
 
-Configure an external resource root, initially `/home/joeloverbeck/Pictures/Arkham Horror LCG Resources`. Image bytes do not belong in the repository, and ordinary operation does not modify this archive. Missing individual images or the entire image archive must leave the game playable using readable English substitutes for cards, tokens, symbols and other necessary components.
+The application reads presentation assets from a separately configured [prepared asset collection](../../GLOSSARY.md), outside the repository. The default uses the user's application-data directory. An in-app folder selection is checked, saved in per-user configuration and applied on restart; canceling or a failed configuration write preserves the previous setting. Temporary command-line overrides do not replace the saved preference. Personal saves, replays and settings remain separate from the portable collection.
+
+The source archive is an unchanged input to [asset preparation](sources-and-verification.md#presentation-asset-preparation). Ordinary play reads only the prepared collection and does not fall back to the archive. The collection must remain usable after relocation without the source archive. Moving or replacing presentation assets must not change rules behavior, recorded decisions or save/replay compatibility. Replay uses the selected presentation assets; exact historical artwork appearance is not a replay guarantee.
+
+Missing, unreadable or changed individual assets, or an absent collection, must leave the game playable using readable English substitutes for cards, tokens, symbols and other necessary components. The application reports whether the expected assets are complete or substitutes are in use. A playable scene with substitutes does not establish a complete asset collection. Image and font bytes remain outside Git.
 
 Symbols have stable semantic identities and readable names; artwork is a presentation choice. Encounter-set symbols, for example, must remain understandable without their glyphs. Missing required rules semantics is different from missing art: preparation reports the unsupported behavior and blocks honestly rather than improvising it.
 
-The applicable constitutional anchors are `AUTH-3`, `PURP-2`, `EVID-3`–`EVID-4`, `EVID-8`, `REP-1`–`REP-2`, `BOUND-5`, `OPS-1` and `OPS-7`; [the constitution](../principles/principles-for-repos.md) owns those rules.
+The applicable constitutional anchors are `AUTH-3`, `PURP-2`, `EVID-3`–`EVID-4`, `EVID-8`, `REP-1`–`REP-2`, `BOUND-5`, `INT-1`, `OPS-1`, `OPS-6` and `OPS-7`; [the constitution](../principles/principles-for-repos.md) owns those rules.
