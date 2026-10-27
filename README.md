@@ -82,7 +82,7 @@ Content support follows the owner's actual use. Starting decks, campaign content
 
 ## Current use and external inputs
 
-The built experiment runs offline. A clean clone needs no artwork or credentials for the checks or readable tabletop substitutes. Run the rules and continuity checks with `cargo test --locked`, or include the tabletop checks with `cargo test --locked --features tabletop`. See the experiment guide for external inputs, records and evidence limits.
+The built experiment runs offline. A clean clone needs no artwork or credentials for the checks or readable tabletop substitutes. Run `scripts/check` for formatting, strict Clippy, and the rules, continuity and tabletop tests. Rustup uses the compiler and components in `rust-toolchain.toml`. The Ubuntu PR workflow runs the same command without a display or private assets. See the experiment guide for [native verification](docs/experiments/jacqueline-curse.md#developer-native-verification), external inputs, records and evidence limits.
 
 The application reads a separately configured prepared asset collection. Image and font bytes are not included in Git. Gameplay remains usable with readable English substitutes when artwork is absent; absent or unsupported rules behavior must be identified before play. The [source contract](docs/foundation/sources-and-verification.md#presentation-asset-preparation) requires deliberate selection, copying/conversion and verification whenever development introduces a new asset dependency. The original archive's layout and source identities belong to that preparation step.
 
