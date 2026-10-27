@@ -7,11 +7,12 @@ use crate::{
 };
 use bevy::{
     input::mouse::{AccumulatedMouseMotion, AccumulatedMouseScroll, MouseScrollUnit},
+    input_focus::tab_navigation::TabIndex,
     picking::hover::Hovered,
     prelude::*,
     render::view::screenshot::{Capturing, Screenshot, save_to_disk},
     ui::Pressed,
-    ui_widgets::{Activate, Button},
+    ui_widgets::{Activate, Button, ModalDialog, ModalDialogBarrier, RequestClose},
 };
 use sha2::{Digest, Sha256};
 use std::path::{Path, PathBuf};
@@ -66,6 +67,7 @@ struct Tabletop {
     notice: String,
     inspect: Option<usize>,
     history: bool,
+    result_open: bool,
     dirty: bool,
 }
 
@@ -91,6 +93,8 @@ enum Action {
     CloseInspect,
     History,
     Follow,
+    ShowResult,
+    DismissResult,
 }
 
 #[derive(Resource, Default)]
@@ -126,6 +130,7 @@ struct Art {
     handles: [Option<Handle<Image>>; 3],
     available: usize,
     token_handles: Vec<(TokenFace, Handle<Image>)>,
+    reminder: Option<Handle<Image>>,
 }
 
 #[derive(serde::Deserialize)]
@@ -156,6 +161,11 @@ struct Panel;
 struct TransientScene;
 #[derive(Component)]
 struct Appearing;
+#[derive(Component)]
+struct ReminderPose {
+    angle: f32,
+    target: f32,
+}
 #[derive(Component)]
 struct WorldLabel(Vec3);
 #[derive(Component)]
@@ -251,6 +261,7 @@ pub fn run() -> Result<(), String> {
     app.insert_resource(ClearColor(INK))
         .insert_resource(Tabletop {
             fixture: session.fixture.clone(),
+            result_open: session.observe().stage == Stage::Finished,
             session,
             replay: None,
             save_path,
@@ -297,6 +308,7 @@ pub fn run() -> Result<(), String> {
                 rebuild_view,
                 label_positions,
                 animate_tokens,
+                animate_reminder,
                 button_colors,
                 capture_window,
             )
@@ -305,10 +317,23 @@ pub fn run() -> Result<(), String> {
     let handles = load_art(app.world().resource::<AssetServer>(), art_root.as_deref());
     let available = handles.iter().filter(|h| h.is_some()).count();
     let token_handles = load_token_art(app.world().resource::<AssetServer>(), art_root.as_deref());
+    let reminder = art_root.as_deref().and_then(|root| {
+        let manifest: serde_json::Value =
+            serde_json::from_str(include_str!("../docs/experiments/token-art.json"))
+                .expect("valid art manifest");
+        let face = &manifest["reaction_reminder"];
+        verified_image(
+            app.world().resource::<AssetServer>(),
+            root,
+            face["path"].as_str()?,
+            face["sha256"].as_str()?,
+        )
+    });
     app.insert_resource(Art {
         handles,
         available,
         token_handles,
+        reminder,
     });
     app.run();
     Ok(())
@@ -460,6 +485,44 @@ fn setup_scene(
         Transform::from_xyz(-5.0, 6.0, 4.0),
     ));
     commands.spawn((Camera3d::default(), Transform::default(), MainCamera));
+    commands
+        .spawn((
+            Mesh3d(meshes.add(Cylinder::new(0.35, 0.10))),
+            MeshMaterial3d(materials.add(Color::srgb(0.35, 0.35, 0.35))),
+            Transform::from_xyz(4.3, 0.22, 1.9),
+            Pickable::IGNORE,
+            ReminderPose {
+                angle: 0.0,
+                target: 0.0,
+            },
+        ))
+        .with_children(|parent| {
+            for (y, rotation, color) in [
+                (
+                    0.055,
+                    -std::f32::consts::FRAC_PI_2,
+                    Color::srgb(0.35, 0.95, 0.65),
+                ),
+                (
+                    -0.055,
+                    std::f32::consts::FRAC_PI_2,
+                    Color::srgb(0.44, 0.35, 0.47),
+                ),
+            ] {
+                parent.spawn((
+                    Mesh3d(meshes.add(Circle::new(0.34))),
+                    MeshMaterial3d(materials.add(StandardMaterial {
+                        base_color: color,
+                        base_color_texture: art.reminder.clone(),
+                        alpha_mode: AlphaMode::Mask(0.5),
+                        unlit: true,
+                        ..default()
+                    })),
+                    Transform::from_xyz(0.0, y, 0.0).with_rotation(Quat::from_rotation_x(rotation)),
+                    Pickable::IGNORE,
+                ));
+            }
+        });
 }
 
 fn handle_actions(
@@ -468,6 +531,10 @@ fn handle_actions(
     mut orbit: ResMut<Orbit>,
 ) {
     for action in queue.0.drain(..) {
+        // A modal consumes interaction with the underlying table, including queued clicks.
+        if table.result_open && !matches!(action, Action::DismissResult) {
+            continue;
+        }
         match action {
             Action::Choose(revision, id) if table.replay.is_none() => {
                 let mut candidate = table.session.clone();
@@ -480,6 +547,7 @@ fn handle_actions(
                     });
                 match result {
                     Ok(()) => {
+                        table.result_open = candidate.observe().stage == Stage::Finished;
                         table.session = candidate;
                         table.notice = "Decision saved. You can close and reopen safely.".into();
                     }
@@ -495,6 +563,7 @@ fn handle_actions(
             Action::Reopen => match continuity::load_session(&table.save_path) {
                 Ok(session) => {
                     table.fixture = session.fixture.clone();
+                    table.result_open = session.observe().stage == Stage::Finished;
                     table.session = session;
                     table.replay = None;
                     orbit.follow = false;
@@ -525,6 +594,7 @@ fn handle_actions(
                 {
                     Ok(replay) => {
                         table.replay = Some(replay);
+                        table.result_open = false;
                         orbit.follow = true;
                         table.notice = "Replay reopened from its saved record. Next advances one moment and pauses.".into();
                     }
@@ -532,17 +602,22 @@ fn handle_actions(
                 }
             }
             Action::Back => {
-                if let Some(replay) = &mut table.replay {
-                    replay.back();
+                if let Some(replay) = &mut table.replay
+                    && replay.back()
+                {
+                    table.result_open = replay.current().stage == Stage::Finished;
                 }
             }
             Action::Next => {
-                if let Some(replay) = &mut table.replay {
-                    replay.next();
+                if let Some(replay) = &mut table.replay
+                    && replay.next()
+                {
+                    table.result_open = replay.current().stage == Stage::Finished;
                 }
             }
             Action::Live => {
                 table.replay = None;
+                table.result_open = table.session.observe().stage == Stage::Finished;
                 orbit.follow = false;
                 table.notice = "Returned to the live session; replay made no changes to it.".into();
             }
@@ -552,6 +627,7 @@ fn handle_actions(
                     Ok(()) => {
                         table.session = session;
                         table.replay = None;
+                        table.result_open = false;
                         orbit.follow = false;
                         table.notice =
                             "New example ready. The previous session has been retained.".into();
@@ -577,6 +653,8 @@ fn handle_actions(
                     orbit.follow = !orbit.follow;
                 }
             }
+            Action::ShowResult => table.result_open = table.view().stage == Stage::Finished,
+            Action::DismissResult => table.result_open = false,
             Action::Choose(_, _) => {}
         }
         if !orbit.follow {
@@ -610,7 +688,8 @@ fn camera_controls(
     mut orbit: ResMut<Orbit>,
     mut camera: Single<&mut Transform, With<MainCamera>>,
 ) {
-    let scene_pointer = table.inspect.is_none()
+    let scene_pointer = !table.result_open
+        && table.inspect.is_none()
         && !table.history
         && window
             .cursor_position()
@@ -634,14 +713,14 @@ fn camera_controls(
         (KeyCode::Equal, 0.0, 0.0, -5.0),
         (KeyCode::Minus, 0.0, 0.0, 5.0),
     ] {
-        if keys.pressed(key) {
+        if !table.result_open && keys.pressed(key) {
             orbit.yaw += yaw * time.delta_secs();
             orbit.pitch += pitch * time.delta_secs();
             orbit.distance += zoom * time.delta_secs();
             changed = true;
         }
     }
-    if keys.just_pressed(KeyCode::Home) {
+    if !table.result_open && keys.just_pressed(KeyCode::Home) {
         *orbit = Orbit::default();
         changed = true;
     }
@@ -740,6 +819,7 @@ fn rebuild_view(
     transient: Query<Entity, With<TransientScene>>,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
+    mut reminder: Single<&mut ReminderPose>,
 ) {
     if !table.dirty {
         return;
@@ -752,6 +832,24 @@ fn rebuild_view(
         commands.entity(entity).despawn();
     }
     let view = table.view();
+    reminder.target = if view.jacqueline_used {
+        std::f32::consts::PI
+    } else {
+        0.0
+    };
+    label(
+        &mut commands,
+        format!(
+            "Reaction reminder\n{}",
+            if view.jacqueline_used {
+                "USED THIS ROUND"
+            } else {
+                "READY"
+            }
+        ),
+        Vec3::new(4.3, 0.15, 2.65),
+        if view.jacqueline_used { MUTED } else { GOLD },
+    );
     label(&mut commands, "STUDY", Vec3::new(0.0, 0.1, -3.55), GOLD);
     let colors = [
         Color::srgb(0.66, 0.43, 0.20),
@@ -826,8 +924,46 @@ fn rebuild_view(
             PAPER,
         );
     }
+    if view.promise_committed {
+        let frame = materials.add(StandardMaterial {
+            base_color: GOLD,
+            unlit: true,
+            ..default()
+        });
+        for (size, at) in [
+            (Vec3::new(2.0, 0.055, 0.09), Vec3::new(0.4, 0.15, 0.57)),
+            (Vec3::new(2.0, 0.055, 0.09), Vec3::new(0.4, 0.15, 3.23)),
+            (Vec3::new(0.09, 0.055, 2.7), Vec3::new(-0.57, 0.15, 1.9)),
+            (Vec3::new(0.09, 0.055, 2.7), Vec3::new(1.37, 0.15, 1.9)),
+        ] {
+            commands.spawn((
+                Mesh3d(meshes.add(Cuboid::from_size(size))),
+                MeshMaterial3d(frame.clone()),
+                Transform::from_translation(at),
+                Pickable::IGNORE,
+                TransientScene,
+            ));
+        }
+    }
+    let mut canceled_index = 0;
+    let mut active_index = 0;
+    let has_canceled = view
+        .tokens
+        .iter()
+        .any(|token| token.status == TokenStatus::Canceled);
     for (i, token) in view.tokens.iter().enumerate() {
-        let x = -1.8 + i as f32 * 1.30;
+        let canceled = token.status == TokenStatus::Canceled;
+        let x = if canceled {
+            let x = -4.5 + canceled_index as f32 * 1.3;
+            canceled_index += 1;
+            x
+        } else if has_canceled {
+            let x = -0.6 + active_index as f32 * 1.3;
+            active_index += 1;
+            x
+        } else {
+            -1.8 + i as f32 * 1.30
+        };
         let color = match token.status {
             TokenStatus::Pending => GOLD,
             TokenStatus::Resolved => Color::srgb(0.28, 0.62, 0.51),
@@ -856,6 +992,11 @@ fn rebuild_view(
             token_entity.with_child((
                 Mesh3d(meshes.add(Plane3d::default().mesh().size(0.88, 0.88))),
                 MeshMaterial3d(materials.add(StandardMaterial {
+                    base_color: if canceled {
+                        Color::srgb(0.35, 0.35, 0.35)
+                    } else {
+                        Color::WHITE
+                    },
                     base_color_texture: Some(image.clone()),
                     alpha_mode: AlphaMode::Mask(0.5),
                     unlit: true,
@@ -864,6 +1005,22 @@ fn rebuild_view(
                 Transform::from_xyz(0.0, 0.065, 0.0),
                 Pickable::IGNORE,
             ));
+        }
+        if canceled {
+            let crossed = materials.add(StandardMaterial {
+                base_color: Color::srgb(1.0, 0.55, 0.48),
+                unlit: true,
+                ..default()
+            });
+            for angle in [-std::f32::consts::FRAC_PI_4, std::f32::consts::FRAC_PI_4] {
+                token_entity.with_child((
+                    Mesh3d(meshes.add(Cuboid::new(0.75, 0.02, 0.065))),
+                    MeshMaterial3d(crossed.clone()),
+                    Transform::from_xyz(0.0, 0.085, 0.0)
+                        .with_rotation(Quat::from_rotation_y(angle)),
+                    Pickable::IGNORE,
+                ));
+            }
         }
         let status = match token.status {
             TokenStatus::Pending => "Revealed",
@@ -947,7 +1104,7 @@ fn rebuild_view(
                 format!("REPLAY  ·  MOMENT {} / {}", r.index() + 1, r.len())
             });
             parent.spawn(text(mode, 13.0, GOLD));
-            parent.spawn(text("A moment of doubt", 27.0, PAPER));
+            parent.spawn(text("Rotting Remains", 27.0, PAPER));
             parent.spawn(text(
                 format!(
                     "WILLPOWER {}   /   TEST {}",
@@ -966,9 +1123,13 @@ fn rebuild_view(
                         choice.id != "end",
                     );
                 }
-            } else {
-                button(parent, "Next moment  →", Action::Next, true);
-                button(parent, "←  Previous moment", Action::Back, false);
+            } else if let Some(replay) = &table.replay {
+                if replay.index() + 1 < replay.len() {
+                    button(parent, "Next moment  →", Action::Next, true);
+                }
+                if replay.index() > 0 {
+                    button(parent, "←  Previous moment", Action::Back, false);
+                }
                 button(parent, "Return to live session", Action::Live, false);
             }
             if matches!(view.stage, Stage::Finished) {
@@ -981,6 +1142,7 @@ fn rebuild_view(
                         Color::srgb(0.50, 0.80, 0.67)
                     },
                 ));
+                button(parent, "Show test result", Action::ShowResult, true);
             }
             parent.spawn(text(
                 format!(
@@ -1121,6 +1283,83 @@ fn rebuild_view(
                 button(parent, "Close history", Action::History, false);
             });
     }
+    if table.result_open && view.stage == Stage::Finished {
+        show_result(&mut commands, &view);
+    }
+}
+
+fn show_result(commands: &mut Commands, view: &Observation) {
+    let failed = view.horror_dealt > 0;
+    let accent = if failed {
+        Color::srgb(0.95, 0.59, 0.49)
+    } else {
+        Color::srgb(0.50, 0.80, 0.67)
+    };
+    let resolved: Vec<_> = view
+        .tokens
+        .iter()
+        .filter(|t| t.status == TokenStatus::Resolved)
+        .collect();
+    let auto_fail = resolved.iter().any(|t| t.face == TokenFace::AutoFail);
+    let curse = resolved.iter().any(|t| t.face == TokenFace::Curse);
+    commands.spawn((
+        Node {
+            position_type: PositionType::Absolute,
+            width: percent(100), height: percent(100),
+            align_items: AlignItems::Center, justify_content: JustifyContent::Center,
+            ..default()
+        },
+        BackgroundColor(Color::srgba(0.015, 0.025, 0.03, 0.78)),
+        GlobalZIndex(100), ModalDialogBarrier, Panel,
+    ))
+    .observe(|_: On<RequestClose>, mut queue: ResMut<Actions>| queue.0.push(Action::DismissResult))
+    .with_children(|parent| {
+        parent.spawn((
+            Node {
+                width: px(640), max_width: percent(90), max_height: percent(88),
+                padding: UiRect::all(px(30)), border: UiRect::all(px(2)),
+                border_radius: BorderRadius::all(px(10)),
+                flex_direction: FlexDirection::Column, row_gap: px(16),
+                overflow: Overflow::scroll_y(), ..default()
+            },
+            BackgroundColor(Color::srgb(0.055, 0.085, 0.10)), BorderColor::all(accent),
+            ScrollPosition::default(), ModalDialog,
+        ))
+        .observe(scroll_panel)
+        .with_children(|panel| {
+            panel.spawn(text("ROTTING REMAINS / SKILL TEST COMPLETE", 14.0, GOLD));
+            panel.spawn(text(if failed { "TEST FAILED" } else { "TEST SUCCEEDED" }, 36.0, accent));
+            panel.spawn(text(format!("Final willpower {}  /  Difficulty {}", view.skill_value, view.difficulty), 24.0, PAPER));
+            panel.spawn(text(format!("{} additional horror", view.horror_dealt), 28.0, accent));
+            if let Some(jacqueline) = view.investigators.iter().find(|i| i.name == "Jacqueline Fine") {
+                panel.spawn(text(format!("Jacqueline now has {} / {} total horror.", jacqueline.horror, jacqueline.sanity), 18.0, PAPER));
+            }
+            panel.spawn(text(format!("Resolved: {}", resolved.iter().map(|t| t.face.label()).collect::<Vec<_>>().join(", ")), 17.0, MUTED));
+            if auto_fail {
+                panel.spawn(text("The uncanceled auto-fail makes the test fail with a final skill value of 0. Numerical modifiers do not change that result.", 18.0, PAPER));
+            }
+            if curse {
+                panel.spawn(text("Why another token?", 22.0, GOLD));
+                panel.spawn(text("The Curse was not canceled: it applies -2 AND requires another reveal. The additional token is separate from that -2 modifier. This experiment uses a prepared token order.", 18.0, PAPER));
+                // Show the recorded continuation, rather than re-running or reconstructing it.
+                if let Some(index) = view.history.iter().position(|entry| entry.starts_with("The resolved curse")) {
+                    for entry in view.history.iter().skip(index + 1).filter(|entry| entry.starts_with("Revealed ")) {
+                            let explanation = entry.split(" [").next().unwrap_or(entry);
+                            panel.spawn(text(explanation, 16.0, MUTED));
+                    }
+                }
+            }
+            panel.spawn((
+                Button, Hovered::default(), TabIndex(0),
+                Node { width: percent(100), min_height: px(48), flex_shrink: 0.0,
+                    padding: UiRect::all(px(12)), align_items: AlignItems::Center,
+                    border_radius: BorderRadius::all(px(5)), ..default() },
+                BackgroundColor(TEAL), ButtonTone(TEAL),
+            ))
+            .observe(|_: On<Activate>, mut queue: ResMut<Actions>| queue.0.push(Action::DismissResult))
+            .with_child(text("Return to table", 18.0, PAPER));
+        });
+    });
 }
 
 fn label_positions(
@@ -1152,6 +1391,12 @@ fn animate_tokens(
             commands.entity(entity).remove::<Appearing>();
         }
     }
+}
+
+fn animate_reminder(time: Res<Time>, mut reminder: Single<(&mut Transform, &mut ReminderPose)>) {
+    let (transform, pose) = &mut *reminder;
+    pose.angle += (pose.target - pose.angle) * (time.delta_secs() * 8.0).min(1.0);
+    transform.rotation = Quat::from_rotation_z(pose.angle);
 }
 
 fn button_colors(
@@ -1215,5 +1460,157 @@ fn capture_window(
         && capture.path.as_ref().is_some_and(|path| path.is_file())
     {
         exit.write(AppExit::Success);
+    }
+}
+
+#[cfg(test)]
+mod result_modal_tests {
+    use super::*;
+
+    fn pending_app(path: PathBuf) -> App {
+        let mut session = Session::new(Fixture::curse());
+        session.choose(0, "commit-promise").unwrap();
+        session.choose(1, "use-jacqueline").unwrap();
+        let mut app = App::new();
+        app.insert_resource(Tabletop {
+            fixture: session.fixture.clone(),
+            session,
+            replay: None,
+            save_path: path,
+            notice: String::new(),
+            inspect: None,
+            history: false,
+            result_open: false,
+            dirty: true,
+        })
+        .insert_resource(Orbit::default())
+        .insert_resource(Actions::default())
+        .add_systems(Update, handle_actions);
+        app
+    }
+
+    fn act(app: &mut App, action: Action) {
+        app.world_mut().resource_mut::<Actions>().0.push(action);
+        app.update();
+    }
+
+    #[test]
+    fn committed_result_can_be_dismissed_saved_and_requested_again() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("live.json");
+        let mut app = pending_app(path.clone());
+        act(&mut app, Action::Choose(2, "cancel-1-2".into()));
+        assert!(app.world().resource::<Tabletop>().result_open);
+        assert_eq!(
+            continuity::load_session(&path)
+                .unwrap()
+                .observe()
+                .skill_value,
+            5
+        );
+        // A queued underlying-table action cannot replace the completed run through the modal.
+        act(&mut app, Action::New);
+        assert_eq!(
+            app.world().resource::<Tabletop>().view().stage,
+            Stage::Finished
+        );
+        act(&mut app, Action::DismissResult);
+        act(&mut app, Action::Save);
+        assert!(!app.world().resource::<Tabletop>().result_open);
+        act(&mut app, Action::ShowResult);
+        assert!(app.world().resource::<Tabletop>().result_open);
+        act(&mut app, Action::DismissResult);
+        act(&mut app, Action::Reopen);
+        assert!(app.world().resource::<Tabletop>().result_open);
+    }
+
+    #[test]
+    fn failed_autosave_does_not_present_an_uncommitted_result() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("live.json");
+        std::fs::write(&path, "damaged save").unwrap();
+        let mut app = pending_app(path.clone());
+        act(&mut app, Action::Choose(2, "cancel-1-2".into()));
+        let table = app.world().resource::<Tabletop>();
+        assert!(!table.result_open);
+        assert_eq!(table.view().stage, Stage::Cancellation);
+        assert!(table.notice.contains("not committed"));
+        assert_eq!(std::fs::read_to_string(path).unwrap(), "damaged save");
+    }
+
+    #[test]
+    fn replay_result_pauses_dismissibly_without_mutating_live_save() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("live.json");
+        let mut app = pending_app(path.clone());
+        act(&mut app, Action::Choose(2, "cancel-1-2".into()));
+        let saved = std::fs::read(&path).unwrap();
+        act(&mut app, Action::DismissResult);
+        act(&mut app, Action::Replay);
+        assert!(!app.world().resource::<Tabletop>().result_open);
+        for _ in 0..3 {
+            act(&mut app, Action::Next);
+        }
+        assert!(app.world().resource::<Tabletop>().result_open);
+        act(&mut app, Action::DismissResult);
+        act(&mut app, Action::Next); // Already at the last moment: no new presentation.
+        assert!(!app.world().resource::<Tabletop>().result_open);
+        act(&mut app, Action::Back);
+        assert!(!app.world().resource::<Tabletop>().result_open);
+        act(&mut app, Action::Next);
+        assert!(app.world().resource::<Tabletop>().result_open);
+        assert_eq!(std::fs::read(path).unwrap(), saved);
+    }
+
+    #[test]
+    fn replay_controls_and_reminder_follow_recorded_state_without_resetting_the_flip() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut app = pending_app(dir.path().join("live.json"));
+        act(&mut app, Action::Choose(2, "cancel-1-2".into()));
+        act(&mut app, Action::DismissResult);
+        app.init_resource::<Assets<Mesh>>()
+            .init_resource::<Assets<StandardMaterial>>()
+            .insert_resource(Art {
+                handles: [None, None, None],
+                available: 0,
+                token_handles: vec![],
+                reminder: None,
+            })
+            .add_systems(Update, rebuild_view.after(handle_actions));
+        let reminder = app
+            .world_mut()
+            .spawn(ReminderPose {
+                angle: 0.7,
+                target: 0.0,
+            })
+            .id();
+        let has_text = |app: &mut App, needle: &str| {
+            let world = app.world_mut();
+            world
+                .query::<&Text>()
+                .iter(world)
+                .any(|text| text.0.contains(needle))
+        };
+        act(&mut app, Action::Replay);
+        assert!(has_text(&mut app, "Rotting Remains"));
+        assert!(has_text(&mut app, "Next moment"));
+        assert!(!has_text(&mut app, "Previous moment"));
+        assert!(has_text(&mut app, "READY"));
+        act(&mut app, Action::Next);
+        assert!(has_text(&mut app, "Committed"));
+        act(&mut app, Action::Next);
+        assert!(has_text(&mut app, "USED THIS ROUND"));
+        assert_eq!(
+            app.world().get::<ReminderPose>(reminder).unwrap().target,
+            std::f32::consts::PI
+        );
+        act(&mut app, Action::History); // An unrelated rebuild must not restart the physical flip.
+        assert_eq!(
+            app.world().get::<ReminderPose>(reminder).unwrap().angle,
+            0.7
+        );
+        act(&mut app, Action::Next);
+        assert!(!has_text(&mut app, "Next moment"));
+        assert!(has_text(&mut app, "Previous moment"));
     }
 }

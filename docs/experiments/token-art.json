@@ -64,5 +64,22 @@
       "original_path": "originals/objects/57/5771760eef9547c85cb33e8756db4b8d000b7f4e302e9c383c28e47e9a5e6140.png",
       "format": "PNG RGBA"
     }
-  ]
+  ],
+  "reaction_reminder": {
+    "asset_id": "fdc810271b6c1d873dbb2ab39da328a8a90e18fdaa4e8178344801b75458cc6c",
+    "pack_id": "sce-base-save",
+    "kind": "ImageURL",
+    "path": "images/other/unclassified/en/sce-base-save/Universal Action - Ability Token--25fb91e4--ImageURL--fdc810271b6c1d873dbb.png",
+    "original_path": "originals/objects/c3/c30319ea053f82dfde7d150800a4d37552c1e8a73931635b336c8de404034994.png",
+    "image": true,
+    "name": "Universal Action / Ability Token",
+    "sha256": "c30319ea053f82dfde7d150800a4d37552c1e8a73931635b336c8de404034994",
+    "width": 319,
+    "height": 319,
+    "format": "PNG RGBA",
+    "interpretation": "Optional app reminder for Jacqueline reaction availability. The archive source object is a scripted universal reminder using class-colored front and dark back; its standalone PNG is a blank circular gray substrate. It does not prescribe an official Arkham rules token or investigator exhaustion.",
+    "source_save": "sources/save/Arkham SCE 4.9.3.json",
+    "source_guid": "834ad5",
+    "source_save_sha256": "87066ff3e8f3a945b38d5caad22d4cc9ac430bc2b7c11686c98c0f7cbdefed4a"
+  }
 }
