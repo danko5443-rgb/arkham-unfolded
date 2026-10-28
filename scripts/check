@@ -3,6 +3,7 @@ set -euo pipefail
 
 cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.."
 
+python3 -B -m unittest discover -s scripts -p 'test_native_verify.py'
 cargo fmt --all -- --check
 cargo clippy --locked --features tabletop --all-targets -- -D warnings
 cargo test --locked --features tabletop
