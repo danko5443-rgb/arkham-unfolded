@@ -1,6 +1,6 @@
 //! The three inspected miniature-card portraits used by this experiment.
 
-use super::{GOLD, TransientScene};
+use super::GOLD;
 use bevy::prelude::*;
 use std::f32::consts::PI;
 
@@ -11,7 +11,7 @@ pub(super) fn spawn(
     image: Option<&Handle<Image>>,
     position: Vec3,
     color: Color,
-) {
+) -> Entity {
     let base = materials.add(StandardMaterial {
         base_color: color,
         perceptual_roughness: 0.75,
@@ -29,7 +29,6 @@ pub(super) fn spawn(
             Transform::from_translation(position),
             Visibility::default(),
             Pickable::IGNORE,
-            TransientScene,
         ))
         .with_children(|standee| {
             standee.spawn((
@@ -93,5 +92,6 @@ pub(super) fn spawn(
                     Pickable::IGNORE,
                 ));
             }
-        });
+        })
+        .id()
 }

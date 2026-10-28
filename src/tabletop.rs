@@ -21,6 +21,7 @@ use std::path::{Path, PathBuf};
 
 mod asset_settings;
 mod inspection;
+mod scene;
 mod standees;
 mod symbols;
 use asset_settings::AssetSettings;
@@ -161,17 +162,6 @@ struct Capture {
 struct MainCamera;
 #[derive(Component)]
 struct Panel;
-#[derive(Component)]
-struct TransientScene;
-#[derive(Component)]
-struct Appearing;
-#[derive(Component)]
-struct ReminderPose {
-    angle: f32,
-    target: f32,
-}
-#[derive(Component)]
-struct WorldLabel(Vec3);
 #[derive(Component)]
 struct ButtonTone(Color);
 
@@ -328,7 +318,7 @@ pub fn run() -> Result<(), String> {
                 }),
         )
         .add_plugins(MeshPickingPlugin)
-        .add_systems(Startup, setup_scene)
+        .add_systems(Startup, setup_table)
         .add_systems(
             Update,
             (
@@ -336,10 +326,7 @@ pub fn run() -> Result<(), String> {
                 poll_asset_settings,
                 handle_actions,
                 camera_controls,
-                rebuild_view,
-                label_positions,
-                animate_tokens,
-                animate_reminder,
+                rebuild_panel,
                 button_colors,
                 capture_window,
             )
@@ -393,6 +380,7 @@ pub fn run() -> Result<(), String> {
         symbol_font,
         status,
     });
+    scene::install(&mut app);
     app.run();
     Ok(())
 }
@@ -417,7 +405,7 @@ fn poll_asset_settings(mut settings: ResMut<AssetSettings>, mut table: ResMut<Ta
     }
 }
 
-fn setup_scene(
+fn setup_table(
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
@@ -526,44 +514,6 @@ fn setup_scene(
         Transform::from_xyz(-5.0, 6.0, 4.0),
     ));
     commands.spawn((Camera3d::default(), Transform::default(), MainCamera));
-    commands
-        .spawn((
-            Mesh3d(meshes.add(Cylinder::new(0.20, 0.06))),
-            MeshMaterial3d(materials.add(Color::srgb(0.35, 0.35, 0.35))),
-            Transform::from_xyz(4.55, 0.22, 1.9),
-            Pickable::IGNORE,
-            ReminderPose {
-                angle: 0.0,
-                target: 0.0,
-            },
-        ))
-        .with_children(|parent| {
-            for (y, rotation, color) in [
-                (
-                    0.035,
-                    -std::f32::consts::FRAC_PI_2,
-                    Color::srgb(0.35, 0.95, 0.65),
-                ),
-                (
-                    -0.035,
-                    std::f32::consts::FRAC_PI_2,
-                    Color::srgb(0.44, 0.35, 0.47),
-                ),
-            ] {
-                parent.spawn((
-                    Mesh3d(meshes.add(Circle::new(0.19))),
-                    MeshMaterial3d(materials.add(StandardMaterial {
-                        base_color: color,
-                        base_color_texture: art.reminder.clone(),
-                        alpha_mode: AlphaMode::Mask(0.5),
-                        unlit: true,
-                        ..default()
-                    })),
-                    Transform::from_xyz(0.0, y, 0.0).with_rotation(Quat::from_rotation_x(rotation)),
-                    Pickable::IGNORE,
-                ));
-            }
-        });
 }
 
 fn handle_actions(
@@ -937,35 +887,12 @@ fn button(parent: &mut ChildSpawnerCommands, label: &str, action: Action, primar
         .with_child(text(label, 16.0, PAPER));
 }
 
-fn label(commands: &mut Commands, value: impl Into<String>, point: Vec3, color: Color) {
-    commands.spawn((
-        text(value, 16.0, color),
-        Node {
-            position_type: PositionType::Absolute,
-            padding: UiRect::axes(px(8), px(4)),
-            border_radius: BorderRadius::all(px(4)),
-            ..default()
-        },
-        BackgroundColor(Color::srgba(0.025, 0.045, 0.055, 0.90)),
-        Pickable::IGNORE,
-        WorldLabel(point),
-        TransientScene,
-    ));
-}
-
-// Keep the rendering resources explicit at the Bevy system boundary.
-#[allow(clippy::too_many_arguments)]
-fn rebuild_view(
+fn rebuild_panel(
     mut commands: Commands,
     mut table: ResMut<Tabletop>,
     orbit: Res<Orbit>,
     art: Res<Art>,
     panels: Query<Entity, With<Panel>>,
-    transient: Query<Entity, With<TransientScene>>,
-    mut meshes: ResMut<Assets<Mesh>>,
-    mut materials: ResMut<Assets<StandardMaterial>>,
-    mut reminder: Single<&mut ReminderPose>,
-    mut rendered_view: Local<Option<Observation>>,
     windows: Query<&Window>,
 ) {
     if !table.dirty {
@@ -976,230 +903,6 @@ fn rebuild_view(
         commands.entity(entity).despawn();
     }
     let view = table.view();
-    // UI-only redraws retain the scene entities and any in-flight reveal motion.
-    if rendered_view.as_ref() != Some(&view) {
-        for entity in &transient {
-            commands.entity(entity).despawn();
-        }
-        reminder.target = if view.jacqueline_used {
-            std::f32::consts::PI
-        } else {
-            0.0
-        };
-        label(
-            &mut commands,
-            format!(
-                "Reaction reminder\n{}",
-                if view.jacqueline_used {
-                    "USED THIS ROUND"
-                } else {
-                    "READY"
-                }
-            ),
-            Vec3::new(4.55, 0.15, 2.65),
-            if view.jacqueline_used { MUTED } else { GOLD },
-        );
-        let colors = [
-            Color::srgb(0.66, 0.43, 0.20),
-            Color::srgb(0.62, 0.23, 0.26),
-            Color::srgb(0.37, 0.28, 0.64),
-        ];
-        for (i, investigator) in view.investigators.iter().enumerate() {
-            let here = investigator.location == "Study";
-            let (x, z) = if here {
-                (-3.4 + i as f32 * 3.3, -2.3)
-            } else {
-                (-4.6, -0.35)
-            };
-            if !here {
-                commands.spawn((
-                    Mesh3d(meshes.add(Cuboid::new(2.2, 0.035, 1.6))),
-                    MeshMaterial3d(materials.add(Color::srgb(0.12, 0.20, 0.22))),
-                    Transform::from_xyz(x, -0.02, z),
-                    Pickable::IGNORE,
-                    TransientScene,
-                ));
-            }
-            let image = art
-                .investigators
-                .iter()
-                .find(|(name, _)| name == &investigator.name)
-                .map(|(_, image)| image);
-            standees::spawn(
-                &mut commands,
-                &mut meshes,
-                &mut materials,
-                image,
-                Vec3::new(x, 0.0, z),
-                colors[i % colors.len()],
-            );
-            label(
-                &mut commands,
-                format!(
-                    "{}\n{} · Horror {}/{}",
-                    investigator.name,
-                    investigator.location,
-                    investigator.horror,
-                    investigator.sanity
-                ),
-                Vec3::new(x, 2.05, z),
-                PAPER,
-            );
-        }
-        label(
-            &mut commands,
-            format!(
-                "Chaos bag · {}\n{} curse in bag",
-                view.bag_count, view.curses_in_bag
-            ),
-            Vec3::new(-4.5, 1.2, 1.75),
-            GOLD,
-        );
-        for (i, card) in CARDS.iter().enumerate() {
-            let status = if i == 1 && view.promise_committed {
-                "Committed · +4"
-            } else {
-                "Click to inspect"
-            };
-            label(
-                &mut commands,
-                format!("{}\n{status}", card.title),
-                Vec3::new(
-                    -2.0 + i as f32 * 2.4,
-                    0.2,
-                    if card.landscape { 2.96 } else { 3.36 },
-                ),
-                PAPER,
-            );
-        }
-        if view.promise_committed {
-            let frame = materials.add(StandardMaterial {
-                base_color: GOLD,
-                unlit: true,
-                ..default()
-            });
-            for (size, at) in [
-                (Vec3::new(2.0, 0.055, 0.09), Vec3::new(0.4, 0.15, 0.57)),
-                (Vec3::new(2.0, 0.055, 0.09), Vec3::new(0.4, 0.15, 3.23)),
-                (Vec3::new(0.09, 0.055, 2.7), Vec3::new(-0.57, 0.15, 1.9)),
-                (Vec3::new(0.09, 0.055, 2.7), Vec3::new(1.37, 0.15, 1.9)),
-            ] {
-                commands.spawn((
-                    Mesh3d(meshes.add(Cuboid::from_size(size))),
-                    MeshMaterial3d(frame.clone()),
-                    Transform::from_translation(at),
-                    Pickable::IGNORE,
-                    TransientScene,
-                ));
-            }
-        }
-        let mut canceled_index = 0;
-        let mut active_index = 0;
-        let has_canceled = view
-            .tokens
-            .iter()
-            .any(|token| token.status == TokenStatus::Canceled);
-        for (i, token) in view.tokens.iter().enumerate() {
-            let canceled = token.status == TokenStatus::Canceled;
-            let x = if canceled {
-                let x = -4.5 + canceled_index as f32 * 1.3;
-                canceled_index += 1;
-                x
-            } else if has_canceled {
-                let x = -0.6 + active_index as f32 * 1.3;
-                active_index += 1;
-                x
-            } else {
-                -1.8 + i as f32 * 1.30
-            };
-            let color = match token.status {
-                TokenStatus::Pending => GOLD,
-                TokenStatus::Resolved => Color::srgb(0.28, 0.62, 0.51),
-                TokenStatus::Canceled => Color::srgb(0.37, 0.25, 0.28),
-            };
-            let is_new = rendered_view.as_ref().is_none_or(|previous| {
-                !previous
-                    .tokens
-                    .iter()
-                    .any(|held| held.id == token.id && held.face == token.face)
-            });
-            let mut token_entity = commands.spawn((
-                Mesh3d(meshes.add(Cylinder::new(0.46, 0.12))),
-                MeshMaterial3d(materials.add(StandardMaterial {
-                    base_color: color,
-                    metallic: 0.32,
-                    perceptual_roughness: 0.5,
-                    ..default()
-                })),
-                Transform::from_xyz(x, 0.15, -0.20).with_scale(Vec3::splat(if is_new {
-                    0.5
-                } else {
-                    1.0
-                })),
-                Pickable::IGNORE,
-                TransientScene,
-            ));
-            if is_new {
-                token_entity.insert(Appearing);
-            }
-            if let Some((_, image)) = art
-                .token_handles
-                .iter()
-                .find(|(face, _)| *face == token.face)
-            {
-                // The plane's UV top points toward -Z, upright from the default camera.
-                // Parenting carries the original face through the cylinder's reveal animation.
-                token_entity.with_child((
-                    Mesh3d(meshes.add(Plane3d::default().mesh().size(0.88, 0.88))),
-                    MeshMaterial3d(materials.add(StandardMaterial {
-                        base_color: if canceled {
-                            Color::srgb(0.35, 0.35, 0.35)
-                        } else {
-                            Color::WHITE
-                        },
-                        base_color_texture: Some(image.clone()),
-                        alpha_mode: AlphaMode::Mask(0.5),
-                        unlit: true,
-                        ..default()
-                    })),
-                    Transform::from_xyz(0.0, 0.065, 0.0),
-                    Pickable::IGNORE,
-                ));
-            }
-            if canceled {
-                let crossed = materials.add(StandardMaterial {
-                    base_color: Color::srgb(1.0, 0.55, 0.48),
-                    unlit: true,
-                    ..default()
-                });
-                for angle in [-std::f32::consts::FRAC_PI_4, std::f32::consts::FRAC_PI_4] {
-                    token_entity.with_child((
-                        Mesh3d(meshes.add(Cuboid::new(0.75, 0.02, 0.065))),
-                        MeshMaterial3d(crossed.clone()),
-                        Transform::from_xyz(0.0, 0.085, 0.0)
-                            .with_rotation(Quat::from_rotation_y(angle)),
-                        Pickable::IGNORE,
-                    ));
-                }
-            }
-            let status = match token.status {
-                TokenStatus::Pending => "Revealed",
-                TokenStatus::Resolved => "Resolved",
-                TokenStatus::Canceled => "Canceled",
-            };
-            label(
-                &mut commands,
-                format!("#{}  {}\n{status}", token.id + 1, token.face.label()),
-                Vec3::new(x, 0.1, -1.2),
-                if token.status == TokenStatus::Canceled {
-                    MUTED
-                } else {
-                    PAPER
-                },
-            );
-        }
-        *rendered_view = Some(view.clone());
-    }
     commands
         .spawn((
             Node {
@@ -1512,43 +1215,6 @@ fn show_result(commands: &mut Commands, view: &Observation, art: &Art) {
     });
 }
 
-fn label_positions(
-    camera: Single<(&Camera, &GlobalTransform), With<MainCamera>>,
-    mut labels: Query<(&WorldLabel, &mut Node, &mut Visibility)>,
-) {
-    for (anchor, mut node, mut visibility) in &mut labels {
-        if let Ok(point) = camera.0.world_to_viewport(camera.1, anchor.0) {
-            node.left = px(point.x - 65.0);
-            node.top = px(point.y - 16.0);
-            *visibility = Visibility::Visible;
-        } else {
-            *visibility = Visibility::Hidden;
-        }
-    }
-}
-
-fn animate_tokens(
-    mut commands: Commands,
-    time: Res<Time>,
-    mut tokens: Query<(Entity, &mut Transform), With<Appearing>>,
-) {
-    for (entity, mut transform) in &mut tokens {
-        transform.scale = transform
-            .scale
-            .lerp(Vec3::ONE, (time.delta_secs() * 10.0).min(1.0));
-        if transform.scale.x > 0.995 {
-            transform.scale = Vec3::ONE;
-            commands.entity(entity).remove::<Appearing>();
-        }
-    }
-}
-
-fn animate_reminder(time: Res<Time>, mut reminder: Single<(&mut Transform, &mut ReminderPose)>) {
-    let (transform, pose) = &mut *reminder;
-    pose.angle += (pose.target - pose.angle) * (time.delta_secs() * 8.0).min(1.0);
-    transform.rotation = Quat::from_rotation_z(pose.angle);
-}
-
 fn button_colors(
     mut buttons: Query<(&Hovered, Has<Pressed>, &ButtonTone, &mut BackgroundColor), With<Button>>,
 ) {
@@ -1610,257 +1276,5 @@ fn capture_window(
         && capture.path.as_ref().is_some_and(|path| path.is_file())
     {
         exit.write(AppExit::Success);
-    }
-}
-
-#[cfg(test)]
-mod result_modal_tests {
-    use super::*;
-
-    fn pending_app(path: PathBuf) -> App {
-        let mut session = Session::new(Fixture::curse());
-        session.choose(0, "commit-promise").unwrap();
-        session.choose(1, "use-jacqueline").unwrap();
-        let mut app = App::new();
-        app.insert_resource(Tabletop {
-            fixture: session.fixture.clone(),
-            session,
-            replay: None,
-            save_path: path,
-            notice: String::new(),
-            inspect: None,
-            history: false,
-            result_open: false,
-            dirty: true,
-        })
-        .insert_resource(Orbit::default())
-        .insert_resource(Actions::default())
-        .add_systems(Update, handle_actions);
-        app
-    }
-
-    fn act(app: &mut App, action: Action) {
-        app.world_mut().resource_mut::<Actions>().0.push(action);
-        app.update();
-    }
-
-    #[test]
-    fn card_inspection_blocks_underlying_decisions_until_closed() {
-        let dir = tempfile::tempdir().unwrap();
-        let mut app = pending_app(dir.path().join("live.json"));
-        act(&mut app, Action::Inspect(2));
-        act(&mut app, Action::Choose(2, "cancel-1-2".into()));
-        assert_eq!(
-            app.world().resource::<Tabletop>().view().stage,
-            Stage::Cancellation
-        );
-        act(&mut app, Action::CloseInspect);
-        act(&mut app, Action::Choose(2, "cancel-1-2".into()));
-        assert_eq!(
-            app.world().resource::<Tabletop>().view().stage,
-            Stage::Finished
-        );
-    }
-
-    #[test]
-    fn showing_and_dismissing_result_do_not_replay_token_reveal_animation() {
-        let dir = tempfile::tempdir().unwrap();
-        let mut app = pending_app(dir.path().join("live.json"));
-        app.init_resource::<Assets<Mesh>>()
-            .init_resource::<Assets<StandardMaterial>>()
-            .init_resource::<Time>()
-            .insert_resource(Art {
-                handles: [None, None, None],
-                available: 0,
-                token_handles: vec![],
-                reminder: None,
-                investigators: Vec::new(),
-                symbol_font: None,
-                status: "Readable substitutes are active.".into(),
-            })
-            .add_systems(
-                Update,
-                (rebuild_view, animate_tokens).chain().after(handle_actions),
-            );
-        app.world_mut().spawn(ReminderPose {
-            angle: 0.0,
-            target: 0.0,
-        });
-        act(&mut app, Action::Choose(2, "cancel-1-2".into()));
-        let appearing = |app: &mut App| {
-            let world = app.world_mut();
-            world
-                .query_filtered::<Entity, With<Appearing>>()
-                .iter(world)
-                .count()
-        };
-        assert_eq!(appearing(&mut app), 4, "newly revealed tokens animate");
-        app.world_mut()
-            .resource_mut::<Time>()
-            .advance_by(std::time::Duration::from_millis(20));
-        app.update();
-        let moving_tokens: Vec<_> = {
-            let world = app.world_mut();
-            world
-                .query_filtered::<(Entity, &Transform), With<Appearing>>()
-                .iter(world)
-                .map(|(entity, transform)| (entity, transform.scale))
-                .collect()
-        };
-        app.world_mut()
-            .resource_mut::<Time>()
-            .advance_by(std::time::Duration::ZERO);
-        act(&mut app, Action::DismissResult);
-        act(&mut app, Action::ShowResult);
-        for (entity, scale) in moving_tokens {
-            assert_eq!(
-                app.world().get::<Transform>(entity).unwrap().scale,
-                scale,
-                "a modal redraw must preserve an in-flight token and its progress"
-            );
-        }
-        app.world_mut()
-            .resource_mut::<Time>()
-            .advance_by(std::time::Duration::from_secs(1));
-        app.update();
-        assert_eq!(appearing(&mut app), 0, "tokens have reached full size");
-        app.world_mut()
-            .resource_mut::<Time>()
-            .advance_by(std::time::Duration::ZERO);
-        for action in [
-            Action::DismissResult,
-            Action::ShowResult,
-            Action::DismissResult,
-        ] {
-            act(&mut app, action);
-            assert_eq!(
-                appearing(&mut app),
-                0,
-                "modal actions must not replay an existing reveal"
-            );
-        }
-    }
-
-    #[test]
-    fn committed_result_can_be_dismissed_saved_and_requested_again() {
-        let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("live.json");
-        let mut app = pending_app(path.clone());
-        act(&mut app, Action::Choose(2, "cancel-1-2".into()));
-        assert!(app.world().resource::<Tabletop>().result_open);
-        assert_eq!(
-            continuity::load_session(&path)
-                .unwrap()
-                .observe()
-                .skill_value,
-            5
-        );
-        // A queued underlying-table action cannot replace the completed run through the modal.
-        act(&mut app, Action::New);
-        assert_eq!(
-            app.world().resource::<Tabletop>().view().stage,
-            Stage::Finished
-        );
-        act(&mut app, Action::DismissResult);
-        act(&mut app, Action::Save);
-        assert!(!app.world().resource::<Tabletop>().result_open);
-        act(&mut app, Action::ShowResult);
-        assert!(app.world().resource::<Tabletop>().result_open);
-        act(&mut app, Action::DismissResult);
-        act(&mut app, Action::Reopen);
-        assert!(app.world().resource::<Tabletop>().result_open);
-    }
-
-    #[test]
-    fn failed_autosave_does_not_present_an_uncommitted_result() {
-        let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("live.json");
-        std::fs::write(&path, "damaged save").unwrap();
-        let mut app = pending_app(path.clone());
-        act(&mut app, Action::Choose(2, "cancel-1-2".into()));
-        let table = app.world().resource::<Tabletop>();
-        assert!(!table.result_open);
-        assert_eq!(table.view().stage, Stage::Cancellation);
-        assert!(table.notice.contains("not committed"));
-        assert_eq!(std::fs::read_to_string(path).unwrap(), "damaged save");
-    }
-
-    #[test]
-    fn replay_result_pauses_dismissibly_without_mutating_live_save() {
-        let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("live.json");
-        let mut app = pending_app(path.clone());
-        act(&mut app, Action::Choose(2, "cancel-1-2".into()));
-        let saved = std::fs::read(&path).unwrap();
-        act(&mut app, Action::DismissResult);
-        act(&mut app, Action::Replay);
-        assert!(!app.world().resource::<Tabletop>().result_open);
-        for _ in 0..3 {
-            act(&mut app, Action::Next);
-        }
-        assert!(app.world().resource::<Tabletop>().result_open);
-        act(&mut app, Action::DismissResult);
-        act(&mut app, Action::Next); // Already at the last moment: no new presentation.
-        assert!(!app.world().resource::<Tabletop>().result_open);
-        act(&mut app, Action::Back);
-        assert!(!app.world().resource::<Tabletop>().result_open);
-        act(&mut app, Action::Next);
-        assert!(app.world().resource::<Tabletop>().result_open);
-        assert_eq!(std::fs::read(path).unwrap(), saved);
-    }
-
-    #[test]
-    fn replay_controls_and_reminder_follow_recorded_state_without_resetting_the_flip() {
-        let dir = tempfile::tempdir().unwrap();
-        let mut app = pending_app(dir.path().join("live.json"));
-        act(&mut app, Action::Choose(2, "cancel-1-2".into()));
-        act(&mut app, Action::DismissResult);
-        app.init_resource::<Assets<Mesh>>()
-            .init_resource::<Assets<StandardMaterial>>()
-            .insert_resource(Art {
-                handles: [None, None, None],
-                available: 0,
-                token_handles: vec![],
-                reminder: None,
-                investigators: Vec::new(),
-                symbol_font: None,
-                status: "Readable substitutes are active.".into(),
-            })
-            .add_systems(Update, rebuild_view.after(handle_actions));
-        let reminder = app
-            .world_mut()
-            .spawn(ReminderPose {
-                angle: 0.7,
-                target: 0.0,
-            })
-            .id();
-        let has_text = |app: &mut App, needle: &str| {
-            let world = app.world_mut();
-            world
-                .query::<&Text>()
-                .iter(world)
-                .any(|text| text.0.contains(needle))
-        };
-        act(&mut app, Action::Replay);
-        assert!(has_text(&mut app, "Rotting Remains"));
-        assert!(has_text(&mut app, "Next moment"));
-        assert!(!has_text(&mut app, "Previous moment"));
-        assert!(has_text(&mut app, "READY"));
-        act(&mut app, Action::Next);
-        assert!(has_text(&mut app, "Committed"));
-        act(&mut app, Action::Next);
-        assert!(has_text(&mut app, "USED THIS ROUND"));
-        assert_eq!(
-            app.world().get::<ReminderPose>(reminder).unwrap().target,
-            std::f32::consts::PI
-        );
-        act(&mut app, Action::History); // An unrelated rebuild must not restart the physical flip.
-        assert_eq!(
-            app.world().get::<ReminderPose>(reminder).unwrap().angle,
-            0.7
-        );
-        act(&mut app, Action::Next);
-        assert!(!has_text(&mut app, "Next moment"));
-        assert!(has_text(&mut app, "Previous moment"));
     }
 }
