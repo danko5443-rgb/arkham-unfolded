@@ -78,50 +78,73 @@ Passing automated checks establishes the exercised decisions and continuity boun
 
 ## Developer native verification
 
-Use a separate save and temporary settings for diagnostics. From the repository root in a working Ubuntu graphics session, build first, then capture the actual app window with its existing screenshot options:
+Use a separate save and temporary settings for diagnostics. The helper below supports the current Ubuntu GNOME/XWayland desktop; it needs system Python 3.11+, `python3-dbus`, `python3-gi`, `python3-pil`, `libX11` and `xdotool`. Its headless tests need only Python and Cargo and run in `scripts/check`. From the repository root, build the normal application and launch a disposable run:
 
 ```sh
 cargo build --locked --features tabletop --bin arkham-tabletop
 review_dir=$(mktemp -d /tmp/arkham-native.XXXXXX)
 mkdir -p "$review_dir/config" "$review_dir/data"
 env XDG_CONFIG_HOME="$review_dir/config" XDG_DATA_HOME="$review_dir/data" \
-  timeout --kill-after=5s 45s target/debug/arkham-tabletop \
+  target/debug/arkham-tabletop \
   --save "$review_dir/review.session.json" --no-art \
-  --screenshot "$review_dir/tabletop.png" --quit-after-screenshot \
-  >"$review_dir/app.log" 2>&1
-capture_status=$?
-printf 'Capture exit: %s; evidence: %s\n' "$capture_status" "$review_dir"
-test "$capture_status" -eq 0 && test -s "$review_dir/tabletop.png"
-```
-
-Inspect both `app.log` and the image. A timeout or missing image is a failed capture; retain the log for diagnosis. The example checks readable substitutes. For real artwork, replace `--no-art` with `--art-root /absolute/path/to/prepared-assets` and confirm the reported completeness. To inspect an existing save, first copy it into the new review directory and replace `--save` with `--load` pointing to that copy: the loaded path also becomes the autosave destination. Keep original saves, replays and settings untouched.
-
-For an interaction check, reuse these temporary directories and launch the binary directly so the background PID belongs to the app:
-
-```sh
-env XDG_CONFIG_HOME="$review_dir/config" XDG_DATA_HOME="$review_dir/data" \
-  target/debug/arkham-tabletop --save "$review_dir/review.session.json" \
-  >"$review_dir/interaction.log" 2>&1 &
+  >"$review_dir/app.log" 2>&1 &
 native_pid=$!
+printf 'App PID: %s; evidence: %s\n' "$native_pid" "$review_dir"
 ```
+
+The example checks readable substitutes. For real artwork, replace `--no-art` with `--art-root /absolute/path/to/prepared-assets` and confirm the completeness in `app.log`. To inspect an existing save, first copy it into the new review directory and replace `--save` with `--load` pointing to that copy: the loaded path also becomes the autosave destination. Keep original saves, replays and settings untouched.
 
 Run window discovery, focus, capture, process inspection and cleanup with the same desktop access and process visibility as the launch. Obtain any required tool permission for that context; a missing PID in an isolated shell does not establish that the launched process exited.
 
-Identify visible windows by that PID (`xdotool search --onlyvisible --pid "$native_pid"`), then verify the app's title and geometry. Set `native_window` to the verified numeric window ID. Title-only searches can also match editor windows. Before clicking, capture and inspect a fresh image through the method intended to observe the interaction, checking the target's bounds and scale. The startup screenshot proves application rendering; it does not prove that later desktop captures are available.
+Identify visible windows by that PID (`xdotool search --onlyvisible --pid "$native_pid"`) and set `native_window` to the Arkham client ID. Title-only searches can also match editor windows. The helper verifies the exact title, PID, process start identity and focus. It reads client geometry directly from X11; older `xdotool getwindowgeometry` versions can include the frame offset twice.
 
-After capture, activate the target and require a matching active-window ID immediately before clicking:
+For capture alone, run:
 
 ```sh
-timeout 5s xdotool windowactivate --sync "$native_window" &&
-  active_window=$(timeout 5s xdotool getactivewindow) &&
-  test "$active_window" = "$native_window"
+timeout 10s /usr/bin/python3 -B scripts/native_verify.py capture \
+  --pid "$native_pid" --window "$native_window" --output "$review_dir/client.png"
 ```
 
-Proceed with clicks only when capture and focus checks both succeed. Use a short timeout around capture commands too. Stop automation after one failed capture/focus/click attempt plus at most one bounded diagnosis attempt. If the interaction remains unavailable, use the already-agreed owner check within its remaining allowance; report the automation limitation without treating the click as verified.
+This captures the client buffer through `XGetImage`, independently of the app's screenshot path. Inspect the image and reported pixel size. A new filename, timestamp or pixel hash does not establish the expected state: F12 produced new files with stale table contents during #14. Use independent captures before and after a visible transition, and inspect the actual result. Startup `--screenshot` remains a rendering check only.
+
+For interaction, keep one helper process and its input open for the entire diagnostic:
+
+```sh
+/usr/bin/python3 -B scripts/native_verify.py session \
+  --pid "$native_pid" --window "$native_window" --output-dir "$review_dir/interaction"
+```
+
+The output directory must be new. The helper saves `initial.png` before requesting consent. In GNOME's dialog, select the monitor containing Arkham, enable **Allow Remote Interaction**, and click **Share**. One nonpersistent, pointer-only grant covers the run. Keep Arkham covering the monitor's central 10% and leave the pointer idle during calibration. The helper measures the portal-to-X11 mapping and checks it at an independent point; it does not reuse a previous monitor's scale. Wait for `ready`, then inspect `initial.png` before choosing a target. Coordinates are pixels relative to the captured client, not a resized image in the conversation. A calibration `refused` result retains the session for the bounded recovery below.
+
+Send one JSON command per line on the same process's stdin. For example, after replacing `X` and `Y` with a target identified in the inspected image:
+
+```text
+{"action":"click","x":X,"y":Y}
+{"action":"capture","name":"after-result.png"}
+```
+
+Wait for `clicked` and allow the visible transition to settle before capturing; inspect the result before choosing another action. A completed press is input evidence only. The helper checks process identity, focus, unchanged geometry and the measured client pointer position immediately before each press. It refuses off-window, off-monitor and mismapped targets. It releases an attempted press even when interrupted.
+
+A `refused` command keeps the grant open. Diagnose once within that session; `{"action":"focus"}` restores focus explicitly and `{"action":"calibrate"}` remeasures a changed monitor mapping. Inspect a new capture before retrying a target. Stop after one failed capture/focus/click attempt plus at most one bounded diagnosis attempt. If interaction remains unavailable, report the limitation and use the already-agreed owner check within its remaining allowance. Do not interpret a stale image as evidence against what the owner sees on the desktop.
+
+Send `{"action":"stop"}` or close stdin when finished. EOF, fatal errors and handled interruption close the portal grant; a killed or crashed process loses its session when its D-Bus connection closes. `events.jsonl` records capture paths, pixel hashes, mapping, refusals and closure. It contains no artwork itself; keep it with the local captures.
 
 For folder persistence, exercise **Choose asset folder → check → Save folder → close**. Restart with the same temporary XDG directories and save, omitting both `--art-root` and `--no-art`, and verify that the saved path and asset status are restored. A screenshot establishes the inspected rendering; the actual interaction and restart establish their separate behavior. Any review of the owner's real preference uses its explicitly agreed scope instead of these diagnostic settings.
 
 Close the verification window normally and reap it with `wait "$native_pid"`. If cleanup is needed, confirm the recorded PID still belongs to this launch before terminating it, and stop only that launch and identified helper processes. Keep logs/captures local; record the revision, command, outcome and evidence location in the active issue. Remove temporary files only after the needed evidence has been retained.
+
+For a temporary instrumented source copy, use a fresh build directory outside both checkouts:
+
+```sh
+/usr/bin/python3 -B scripts/native_verify.py build \
+  --source /absolute/path/to/diagnostic-source \
+  --output-dir "$review_dir/diagnostic-build" \
+  --reference "$PWD/target/debug/arkham-tabletop"
+```
+
+This runs offline, locked Cargo with an explicit separate `--target-dir`, records the build log and hashes the normal executable before and after, including on build failure. Build the normal executable first if it is absent. Run only the returned diagnostic binary for that experiment. Sharing target output can replace the normal executable, and a subsequent Cargo build can report it fresh without restoring it. The helper preserves output for inspection rather than cleaning either checkout.
+
+Protocol references: [RemoteDesktop](https://flatpak.github.io/xdg-desktop-portal/docs/doc-org.freedesktop.portal.RemoteDesktop.html) and [ScreenCast](https://flatpak.github.io/xdg-desktop-portal/docs/doc-org.freedesktop.portal.ScreenCast.html). Support and evidence remain limited to the desktop and journey actually exercised.
 
 ### Visual and wording review
 
