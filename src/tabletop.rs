@@ -92,6 +92,17 @@ impl Tabletop {
     }
 }
 
+fn has_resolved_curse(view: &Observation) -> bool {
+    view.tokens
+        .iter()
+        .any(|token| token.face == TokenFace::Curse && token.status == TokenStatus::Resolved)
+}
+
+fn result_opens_automatically(view: &Observation) -> bool {
+    // Leave the mandatory extra reveal visible until the player requests the result.
+    view.stage == Stage::Finished && !has_resolved_curse(view)
+}
+
 #[derive(Clone)]
 enum Action {
     Choose(u64, String),
@@ -284,7 +295,7 @@ pub fn run() -> Result<(), String> {
     app.insert_resource(ClearColor(INK))
         .insert_resource(Tabletop {
             fixture: session.fixture.clone(),
-            result_open: session.observe().stage == Stage::Finished,
+            result_open: result_opens_automatically(&session.observe()),
             session,
             replay: None,
             save_path,
@@ -538,7 +549,7 @@ fn handle_actions(
                 match continuity::commit_choice(&table.save_path, &mut table.session, revision, &id)
                 {
                     Ok(()) => {
-                        table.result_open = table.session.observe().stage == Stage::Finished;
+                        table.result_open = result_opens_automatically(&table.session.observe());
                         table.notice = "Decision saved. You can close and reopen safely.".into();
                     }
                     Err(error) => table.notice = format!("Decision was not committed: {error}"),
@@ -553,7 +564,7 @@ fn handle_actions(
             Action::Reopen => match continuity::load_session(&table.save_path) {
                 Ok(session) => {
                     table.fixture = session.fixture.clone();
-                    table.result_open = session.observe().stage == Stage::Finished;
+                    table.result_open = result_opens_automatically(&session.observe());
                     table.session = session;
                     table.replay = None;
                     orbit.follow = false;
@@ -595,19 +606,19 @@ fn handle_actions(
                 if let Some(replay) = &mut table.replay
                     && replay.back()
                 {
-                    table.result_open = replay.current().stage == Stage::Finished;
+                    table.result_open = result_opens_automatically(replay.current());
                 }
             }
             Action::Next => {
                 if let Some(replay) = &mut table.replay
                     && replay.next()
                 {
-                    table.result_open = replay.current().stage == Stage::Finished;
+                    table.result_open = result_opens_automatically(replay.current());
                 }
             }
             Action::Live => {
                 table.replay = None;
-                table.result_open = table.session.observe().stage == Stage::Finished;
+                table.result_open = result_opens_automatically(&table.session.observe());
                 orbit.follow = false;
                 table.notice = "Returned to the live session; replay made no changes to it.".into();
             }
@@ -971,7 +982,16 @@ fn rebuild_panel(
             parent.spawn(text(mode, 13.0, GOLD));
             parent.spawn(text("Rotting Remains", 27.0, PAPER));
             skill_summary(parent, &art, &view, 17.0, GOLD);
-            parent.spawn(text(&view.prompt, 19.0, PAPER));
+            if view.stage == Stage::Finished && has_resolved_curse(&view) {
+                parent.spawn(text("Curse: −2. Reveal another token.", 19.0, GOLD));
+                parent.spawn(text(
+                    "Inspect the additional token, then choose Show test result when ready.",
+                    16.0,
+                    PAPER,
+                ));
+            } else {
+                parent.spawn(text(&view.prompt, 19.0, PAPER));
+            }
             if table.replay.is_none() {
                 for choice in &view.choices {
                     button(
