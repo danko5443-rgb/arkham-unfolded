@@ -3,6 +3,7 @@
 pub mod asset_config;
 pub mod assets;
 pub mod continuity;
+mod explanation;
 
 #[cfg(feature = "tabletop")]
 pub mod tabletop;
@@ -459,13 +460,8 @@ impl Session {
                 status: TokenStatus::Pending,
             });
         }
-        self.history.push(format!(
-            "Revealed {}. [RR ST.3; 60401]",
-            self.group
-                .iter()
-                .map(|&id| self.tokens[id as usize].face.label())
-                .collect::<Vec<_>>()
-                .join(", ")
+        self.history.push(explanation::revealed_history(
+            self.group.iter().map(|&id| self.tokens[id as usize].face),
         ));
         Ok(())
     }
@@ -490,7 +486,8 @@ impl Session {
         if self.extra_draws > 0 {
             self.extra_draws -= 1;
             self.stage = Stage::BeforeReveal;
-            self.history.push("The resolved curse contributes −2 and requires another reveal. The prior token group stays resolved. [Innsmouth insert p1]".into());
+            self.history
+                .push(explanation::resolved_curse_history().into());
             // No optional ability remains in this fixture once Jacqueline has
             // spent her use. Administer the mandatory continuation ourselves.
             if self.jacqueline_used {

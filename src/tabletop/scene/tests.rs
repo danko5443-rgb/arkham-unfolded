@@ -6,6 +6,10 @@ fn pending_app(path: PathBuf) -> App {
     let mut session = Session::new(Fixture::curse());
     session.choose(0, "commit-promise").unwrap();
     session.choose(1, "use-jacqueline").unwrap();
+    app_for_session(session, path)
+}
+
+fn app_for_session(session: Session, path: PathBuf) -> App {
     let config = AssetConfig::load_at(path.with_extension("toml"), path.with_extension("assets"));
     let mut app = App::new();
     app.insert_resource(Tabletop {
@@ -62,6 +66,88 @@ fn result_visible(app: &mut App) -> bool {
         .iter(world)
         .next()
         .is_some()
+}
+
+fn result_text(app: &mut App) -> Vec<String> {
+    let world = app.world_mut();
+    let dialog = world
+        .query_filtered::<Entity, With<ModalDialog>>()
+        .single(world)
+        .unwrap();
+    world
+        .query::<&Children>()
+        .query(world)
+        .iter_descendants(dialog)
+        .filter_map(|entity| world.get::<Text>(entity).map(|text| text.0.clone()))
+        .collect()
+}
+
+#[test]
+fn result_dialog_preserves_recorded_explanations_in_live_reopened_and_replay_views() {
+    for (name, fixture, choices, expected, absent) in [
+        (
+            "early", Fixture::curse(),
+            ["commit-promise", "use-jacqueline", "cancel-1-2"].as_slice(),
+            ["TEST SUCCEEDED", "Resolved: Curse, -2", "Revealed -2.", "0 additional horror", "Jacqueline's horror: 2 of 9 (unchanged)."].as_slice(),
+            "Revealed -1, 0, -2.",
+        ),
+        (
+            "late", Fixture::curse(),
+            ["commit-promise", "reveal", "use-jacqueline", "cancel-1-2"].as_slice(),
+            ["TEST SUCCEEDED", "Resolved: Curse, -2", "Revealed -1, 0, -2.", "0 additional horror", "Jacqueline's horror: 2 of 9 (unchanged)."].as_slice(),
+            "Revealed -2.",
+        ),
+        (
+            "autofail", Fixture::auto_fail(),
+            ["commit-promise", "use-jacqueline", "cancel-1-2"].as_slice(),
+            ["TEST FAILED", "Resolved: Auto-fail", "The uncanceled auto-fail makes the test fail with a final skill value of 0. Numerical modifiers do not change that result.", "3 additional horror", "Jacqueline's horror: 2 -> 5 of 9."].as_slice(),
+            "Why another token?",
+        ),
+    ] {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("live.json");
+        let mut app = app_for_session(Session::new(fixture), path.clone());
+        for (revision, &id) in choices.iter().enumerate() {
+            act(&mut app, Action::Choose(revision as u64, id.into()));
+        }
+        let live = app.world().resource::<Tabletop>().view();
+        let saved = std::fs::read(&path).unwrap();
+        act(&mut app, Action::ShowResult);
+        let original_text = result_text(&mut app);
+        for &line in expected {
+            assert!(original_text.iter().any(|text| text == line), "{name}: missing {line:?} in {original_text:?}");
+        }
+        assert!(!original_text.iter().any(|text| text == absent));
+        assert!(!original_text.iter().any(|text| text.contains("[RR ST.3; 60401]")));
+
+        // Open an independent baseline save through the actual Reopen action.
+        // Replay then exports/reloads its recording through the production path.
+        let legacy_path = dir.path().join("legacy.json");
+        std::fs::copy(
+            Path::new(env!("CARGO_MANIFEST_DIR")).join(format!("tests/fixtures/result-explanation/{name}.session.json")),
+            &legacy_path,
+        ).unwrap();
+        let legacy_bytes = std::fs::read(&legacy_path).unwrap();
+        act(&mut app, Action::DismissResult);
+        app.world_mut().resource_mut::<Tabletop>().save_path = legacy_path.clone();
+        act(&mut app, Action::Reopen);
+        assert_eq!(app.world().resource::<Tabletop>().view(), live);
+        assert_eq!(result_visible(&mut app), name == "autofail");
+        act(&mut app, Action::ShowResult);
+        assert_eq!(result_text(&mut app), original_text);
+        act(&mut app, Action::DismissResult);
+        act(&mut app, Action::Replay);
+        for _ in choices {
+            act(&mut app, Action::Next);
+        }
+        assert!(app.world().resource::<Tabletop>().replay.is_some());
+        assert_eq!(app.world().resource::<Tabletop>().view(), live);
+        assert_eq!(result_visible(&mut app), name == "autofail");
+        act(&mut app, Action::ShowResult);
+        assert_eq!(result_text(&mut app), original_text);
+        assert_eq!(std::fs::read(&path).unwrap(), saved);
+        assert_eq!(std::fs::read(&legacy_path).unwrap(), legacy_bytes);
+    }
 }
 
 #[test]
