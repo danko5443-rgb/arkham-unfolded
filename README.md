@@ -18,7 +18,7 @@ If your checkout is elsewhere, replace the directory in the first line. This req
 In a fresh case:
 
 1. Click **Commit Promise of Power**, then **Use Jacqueline: reveal 3, then choose cancellations**.
-2. Choose which tokens to cancel. The centered result window explains the outcome; click **Return to table** to continue.
+2. Choose which tokens to cancel. If a curse resolves, watch the additional token appear on the table, then click **Show test result** when ready. Other completed tests open the result automatically. The centered result window explains the outcome; click **Return to table** to continue.
 3. Click **Open recorded replay**. Use **Next moment** and **Previous moment** to step through it. Those buttons appear only when another moment exists in that direction.
 
 Click any card to open its enlarged artwork and readable rules. Use **Close card** or `Esc` to return; on a smaller window, scroll inside the inspection to see the whole card and text. Right-drag or use the arrow keys to orbit the camera; the wheel or `+`/`-` zooms, and `Home` resets it. Moving the camera manually overrides replay's automatic following.

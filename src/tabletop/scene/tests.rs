@@ -55,6 +55,108 @@ fn act(app: &mut App, action: Action) {
     app.update();
 }
 
+fn result_visible(app: &mut App) -> bool {
+    let world = app.world_mut();
+    world
+        .query_filtered::<Entity, With<ModalDialog>>()
+        .iter(world)
+        .next()
+        .is_some()
+}
+
+#[test]
+fn curse_continuation_stays_visible_until_the_player_requests_the_result() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("live.json");
+    let mut app = pending_app(path.clone());
+    advance(&mut app, 1000);
+    app.world_mut()
+        .resource_mut::<Time>()
+        .advance_by(Duration::from_millis(20));
+    act(&mut app, Action::Choose(2, "cancel-1-2".into()));
+
+    assert!(
+        !result_visible(&mut app),
+        "the additional token must not reveal behind a result popup"
+    );
+    assert_eq!(appearing_count(&mut app), 1);
+    let world = app.world_mut();
+    assert!(
+        world
+            .query::<&Text>()
+            .iter(world)
+            .any(|text| { text.0 == "Curse: -2. Reveal another token." })
+    );
+    let saved = continuity::load_session(&path).unwrap();
+    assert_eq!(saved.observe().stage, Stage::Finished);
+    assert_eq!(saved.observe().skill_value, 5);
+    assert_eq!(saved.observe().tokens.len(), 4);
+    let bytes = std::fs::read(&path).unwrap();
+
+    advance(&mut app, 10_000);
+    assert_eq!(appearing_count(&mut app), 0);
+    assert!(!result_visible(&mut app), "there is no popup timer");
+    act(&mut app, Action::ShowResult);
+    assert!(result_visible(&mut app));
+    act(&mut app, Action::DismissResult);
+    assert!(!result_visible(&mut app));
+    assert_eq!(appearing_count(&mut app), 0);
+    assert_eq!(std::fs::read(path).unwrap(), bytes);
+}
+
+#[test]
+fn replay_and_return_to_live_leave_the_curse_reveal_unobscured() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("live.json");
+    let mut app = pending_app(path.clone());
+    act(&mut app, Action::Choose(2, "cancel-1-2".into()));
+    let saved = std::fs::read(&path).unwrap();
+    act(&mut app, Action::Replay);
+    act(&mut app, Action::Next);
+    act(&mut app, Action::Next);
+    advance(&mut app, 1000);
+    app.world_mut()
+        .resource_mut::<Time>()
+        .advance_by(Duration::from_millis(20));
+    act(&mut app, Action::Next);
+    assert!(!result_visible(&mut app));
+    assert_eq!(appearing_count(&mut app), 1);
+    assert_eq!(app.world().resource::<Tabletop>().view().tokens.len(), 4);
+    act(&mut app, Action::ShowResult);
+    assert!(result_visible(&mut app));
+    act(&mut app, Action::DismissResult);
+    act(&mut app, Action::Back);
+    assert_eq!(app.world().resource::<Tabletop>().view().tokens.len(), 3);
+    act(&mut app, Action::Next);
+    assert!(!result_visible(&mut app));
+    act(&mut app, Action::Back);
+    act(&mut app, Action::Live);
+    assert!(!result_visible(&mut app));
+    assert_eq!(app.world().resource::<Tabletop>().view().tokens.len(), 4);
+    assert_eq!(std::fs::read(path).unwrap(), saved);
+}
+
+#[test]
+fn reopening_a_completed_curse_test_preserves_the_visible_reveal_and_saved_outcome() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("live.json");
+    let mut app = pending_app(path.clone());
+    act(&mut app, Action::Choose(2, "cancel-1-2".into()));
+    let saved = std::fs::read(&path).unwrap();
+    act(&mut app, Action::ShowResult);
+    assert!(result_visible(&mut app));
+    act(&mut app, Action::DismissResult);
+    act(&mut app, Action::Reopen);
+    assert!(!result_visible(&mut app));
+    let view = app.world().resource::<Tabletop>().view();
+    assert_eq!(view.stage, Stage::Finished);
+    assert_eq!(view.skill_value, 5);
+    assert_eq!(view.tokens.len(), 4);
+    act(&mut app, Action::ShowResult);
+    assert!(result_visible(&mut app));
+    assert_eq!(std::fs::read(path).unwrap(), saved);
+}
+
 #[test]
 fn card_inspection_blocks_underlying_decisions_until_closed() {
     let dir = tempfile::tempdir().unwrap();
@@ -78,6 +180,7 @@ fn showing_and_dismissing_result_do_not_replay_token_reveal_animation() {
     let dir = tempfile::tempdir().unwrap();
     let mut app = pending_app(dir.path().join("live.json"));
     act(&mut app, Action::Choose(2, "cancel-1-2".into()));
+    act(&mut app, Action::ShowResult);
     assert_eq!(
         appearing_count(&mut app),
         4,
@@ -134,18 +237,18 @@ fn showing_and_dismissing_result_do_not_replay_token_reveal_animation() {
 }
 
 #[test]
-fn committed_result_can_be_dismissed_saved_and_requested_again() {
+fn canceled_curse_result_opens_and_can_be_dismissed_saved_and_requested_again() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("live.json");
     let mut app = pending_app(path.clone());
-    act(&mut app, Action::Choose(2, "cancel-1-2".into()));
+    act(&mut app, Action::Choose(2, "cancel-0-1".into()));
     assert!(app.world().resource::<Tabletop>().result_open);
     assert_eq!(
         continuity::load_session(&path)
             .unwrap()
             .observe()
             .skill_value,
-        5
+        9
     );
     // A queued underlying-table action cannot replace the completed run through the modal.
     act(&mut app, Action::New);
@@ -178,11 +281,11 @@ fn failed_autosave_does_not_present_an_uncommitted_result() {
 }
 
 #[test]
-fn replay_result_pauses_dismissibly_without_mutating_live_save() {
+fn replay_without_a_resolved_curse_presents_results_without_mutating_live_save() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("live.json");
     let mut app = pending_app(path.clone());
-    act(&mut app, Action::Choose(2, "cancel-1-2".into()));
+    act(&mut app, Action::Choose(2, "cancel-0-1".into()));
     let saved = std::fs::read(&path).unwrap();
     act(&mut app, Action::DismissResult);
     act(&mut app, Action::Replay);
