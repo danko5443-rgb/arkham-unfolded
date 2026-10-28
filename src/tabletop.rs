@@ -6,6 +6,7 @@ use crate::{
     asset_config::AssetConfig,
     assets::{self, CollectionReport},
     continuity::{self, Replay},
+    explanation::explain_result,
 };
 use bevy::{
     input::mouse::{AccumulatedMouseMotion, AccumulatedMouseScroll, MouseScrollUnit},
@@ -1140,99 +1141,175 @@ fn rebuild_panel(
 }
 
 fn show_result(commands: &mut Commands, view: &Observation, art: &Art) {
-    let failed = view.horror_dealt > 0;
+    let Some(explanation) = explain_result(view) else {
+        return;
+    };
+    let failed = explanation.failed();
     let accent = if failed {
         Color::srgb(0.95, 0.59, 0.49)
     } else {
         Color::srgb(0.50, 0.80, 0.67)
     };
-    let resolved: Vec<_> = view
-        .tokens
-        .iter()
-        .filter(|t| t.status == TokenStatus::Resolved)
-        .collect();
-    let auto_fail = resolved.iter().any(|t| t.face == TokenFace::AutoFail);
-    let curse = resolved.iter().any(|t| t.face == TokenFace::Curse);
-    commands.spawn((
-        Node {
-            position_type: PositionType::Absolute,
-            width: percent(100), height: percent(100),
-            align_items: AlignItems::Center, justify_content: JustifyContent::Center,
-            ..default()
-        },
-        BackgroundColor(Color::srgba(0.015, 0.025, 0.03, 0.78)),
-        GlobalZIndex(100), ModalDialogBarrier, Panel,
-    ))
-    .observe(|_: On<RequestClose>, mut queue: ResMut<Actions>| queue.0.push(Action::DismissResult))
-    .with_children(|parent| {
-        parent.spawn((
+    commands
+        .spawn((
             Node {
-                width: px(640), max_width: percent(90), max_height: percent(88),
-                padding: UiRect::all(px(30)), border: UiRect::all(px(2)),
-                border_radius: BorderRadius::all(px(10)),
-                flex_direction: FlexDirection::Column, row_gap: px(16),
-                overflow: Overflow::scroll_y(), ..default()
+                position_type: PositionType::Absolute,
+                width: percent(100),
+                height: percent(100),
+                align_items: AlignItems::Center,
+                justify_content: JustifyContent::Center,
+                ..default()
             },
-            BackgroundColor(Color::srgb(0.055, 0.085, 0.10)), BorderColor::all(accent),
-            ScrollPosition::default(), ModalDialog, TabGroup::modal(),
+            BackgroundColor(Color::srgba(0.015, 0.025, 0.03, 0.78)),
+            GlobalZIndex(100),
+            ModalDialogBarrier,
+            Panel,
         ))
-        .observe(scroll_panel)
-        .with_children(|panel| {
-            panel.spawn(Node {
-                width: percent(100), flex_direction: FlexDirection::Column,
-                align_items: AlignItems::Center, row_gap: px(12), ..default()
-            }).with_children(|header| {
-                header.spawn((text("ROTTING REMAINS / SKILL TEST COMPLETE", 14.0, GOLD),
-                    TextLayout::justify(Justify::Center)));
-                header.spawn((text(if failed { "TEST FAILED" } else { "TEST SUCCEEDED" }, 36.0, accent),
-                    TextLayout::justify(Justify::Center)));
-                skill_summary(header, art, view, 24.0, PAPER);
-                let amount = if failed { format!("+{} ", view.horror_dealt) } else { "No additional ".into() };
-                symbol_text(header, &art.symbol_font,
-                    &[Run::Words(&amount), Run::Icon(Symbol::Horror)],
-                    &format!("{} additional horror", view.horror_dealt), 28.0, accent);
-                if let Some(jacqueline) = view.investigators.iter().find(|i| i.name == "Jacqueline Fine") {
-                    let total = if failed {
-                        format!(" {} -> {} / {}", jacqueline.horror.saturating_sub(view.horror_dealt), jacqueline.horror, jacqueline.sanity)
-                    } else {
-                        format!(" {} / {} (unchanged)", jacqueline.horror, jacqueline.sanity)
-                    };
-                    let label = if failed {
-                        format!("Jacqueline's horror: {} -> {} of {}.", jacqueline.horror.saturating_sub(view.horror_dealt), jacqueline.horror, jacqueline.sanity)
-                    } else {
-                        format!("Jacqueline's horror: {} of {} (unchanged).", jacqueline.horror, jacqueline.sanity)
-                    };
-                    symbol_text(header, &art.symbol_font,
-                        &[Run::Words("Jacqueline: "), Run::Icon(Symbol::Horror), Run::Words(&total)],
-                        &label, 18.0, PAPER);
-                }
-            });
-            panel.spawn(text(format!("Resolved: {}", resolved.iter().map(|t| t.face.label()).collect::<Vec<_>>().join(", ")), 17.0, MUTED));
-            if auto_fail {
-                panel.spawn(text("The uncanceled auto-fail makes the test fail with a final skill value of 0. Numerical modifiers do not change that result.", 18.0, PAPER));
-            }
-            if curse {
-                panel.spawn(text("Why another token?", 22.0, GOLD));
-                panel.spawn(text("The Curse was not canceled: it applies -2 AND requires another reveal. The additional token is separate from that -2 modifier. This experiment uses a prepared token order.", 18.0, PAPER));
-                // Show the recorded continuation, rather than re-running or reconstructing it.
-                if let Some(index) = view.history.iter().position(|entry| entry.starts_with("The resolved curse")) {
-                    for entry in view.history.iter().skip(index + 1).filter(|entry| entry.starts_with("Revealed ")) {
-                            let explanation = entry.split(" [").next().unwrap_or(entry);
-                            panel.spawn(text(explanation, 16.0, MUTED));
+        .observe(|_: On<RequestClose>, mut queue: ResMut<Actions>| {
+            queue.0.push(Action::DismissResult)
+        })
+        .with_children(|parent| {
+            parent
+                .spawn((
+                    Node {
+                        width: px(640),
+                        max_width: percent(90),
+                        max_height: percent(88),
+                        padding: UiRect::all(px(30)),
+                        border: UiRect::all(px(2)),
+                        border_radius: BorderRadius::all(px(10)),
+                        flex_direction: FlexDirection::Column,
+                        row_gap: px(16),
+                        overflow: Overflow::scroll_y(),
+                        ..default()
+                    },
+                    BackgroundColor(Color::srgb(0.055, 0.085, 0.10)),
+                    BorderColor::all(accent),
+                    ScrollPosition::default(),
+                    ModalDialog,
+                    TabGroup::modal(),
+                ))
+                .observe(scroll_panel)
+                .with_children(|panel| {
+                    panel
+                        .spawn(Node {
+                            width: percent(100),
+                            flex_direction: FlexDirection::Column,
+                            align_items: AlignItems::Center,
+                            row_gap: px(12),
+                            ..default()
+                        })
+                        .with_children(|header| {
+                            header.spawn((
+                                text("ROTTING REMAINS / SKILL TEST COMPLETE", 14.0, GOLD),
+                                TextLayout::justify(Justify::Center),
+                            ));
+                            header.spawn((
+                                text(
+                                    if failed {
+                                        "TEST FAILED"
+                                    } else {
+                                        "TEST SUCCEEDED"
+                                    },
+                                    36.0,
+                                    accent,
+                                ),
+                                TextLayout::justify(Justify::Center),
+                            ));
+                            skill_summary(header, art, view, 24.0, PAPER);
+                            let amount = if failed {
+                                format!("+{} ", explanation.additional_horror)
+                            } else {
+                                "No additional ".into()
+                            };
+                            symbol_text(
+                                header,
+                                &art.symbol_font,
+                                &[Run::Words(&amount), Run::Icon(Symbol::Horror)],
+                                &format!("{} additional horror", explanation.additional_horror),
+                                28.0,
+                                accent,
+                            );
+                            if let Some(horror) = &explanation.jacqueline_horror {
+                                let total = if failed {
+                                    format!(
+                                        " {} -> {} / {}",
+                                        horror.previous, horror.total, horror.sanity
+                                    )
+                                } else {
+                                    format!(" {} / {} (unchanged)", horror.total, horror.sanity)
+                                };
+                                let label = if failed {
+                                    format!(
+                                        "Jacqueline's horror: {} -> {} of {}.",
+                                        horror.previous, horror.total, horror.sanity
+                                    )
+                                } else {
+                                    format!(
+                                        "Jacqueline's horror: {} of {} (unchanged).",
+                                        horror.total, horror.sanity
+                                    )
+                                };
+                                symbol_text(
+                                    header,
+                                    &art.symbol_font,
+                                    &[
+                                        Run::Words("Jacqueline: "),
+                                        Run::Icon(Symbol::Horror),
+                                        Run::Words(&total),
+                                    ],
+                                    &label,
+                                    18.0,
+                                    PAPER,
+                                );
+                            }
+                        });
+                    panel.spawn(text(
+                        format!(
+                            "Resolved: {}",
+                            explanation
+                                .resolved
+                                .iter()
+                                .map(|face| face.label())
+                                .collect::<Vec<_>>()
+                                .join(", ")
+                        ),
+                        17.0,
+                        MUTED,
+                    ));
+                    if let Some(reason) = explanation.auto_fail_reason {
+                        panel.spawn(text(reason, 18.0, PAPER));
                     }
-                }
-            }
-            panel.spawn((
-                Button, Hovered::default(), TabIndex(0),
-                Node { width: percent(100), min_height: px(48), flex_shrink: 0.0,
-                    padding: UiRect::all(px(12)), align_items: AlignItems::Center,
-                    border_radius: BorderRadius::all(px(5)), ..default() },
-                BackgroundColor(TEAL), ButtonTone(TEAL),
-            ))
-            .observe(|_: On<Activate>, mut queue: ResMut<Actions>| queue.0.push(Action::DismissResult))
-            .with_child(text("Return to table", 18.0, PAPER));
+                    if let Some(reason) = explanation.curse_reason {
+                        panel.spawn(text("Why another token?", 22.0, GOLD));
+                        panel.spawn(text(reason, 18.0, PAPER));
+                        for continuation in explanation.continuation {
+                            panel.spawn(text(continuation, 16.0, MUTED));
+                        }
+                    }
+                    panel
+                        .spawn((
+                            Button,
+                            Hovered::default(),
+                            TabIndex(0),
+                            Node {
+                                width: percent(100),
+                                min_height: px(48),
+                                flex_shrink: 0.0,
+                                padding: UiRect::all(px(12)),
+                                align_items: AlignItems::Center,
+                                border_radius: BorderRadius::all(px(5)),
+                                ..default()
+                            },
+                            BackgroundColor(TEAL),
+                            ButtonTone(TEAL),
+                        ))
+                        .observe(|_: On<Activate>, mut queue: ResMut<Actions>| {
+                            queue.0.push(Action::DismissResult)
+                        })
+                        .with_child(text("Return to table", 18.0, PAPER));
+                });
         });
-    });
 }
 
 fn button_colors(
